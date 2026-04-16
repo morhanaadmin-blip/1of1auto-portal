@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion } from "motion/react";
 import type { PersonData } from "@/lib/types";
 import { ContinueButton } from "@/components/ui/Field";
@@ -16,6 +16,8 @@ export default function PageScan({ person, update, onNext, isCoApp }: Props) {
   const [scanning, setScanning] = useState(false);
   const [scanComplete, setScanComplete] = useState(false);
   const [error, setError] = useState("");
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -71,14 +73,14 @@ export default function PageScan({ person, update, onNext, isCoApp }: Props) {
         </p>
       </motion.div>
 
-      <motion.label
+      <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.2 }}
-        className={`relative flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-8 cursor-pointer transition-all aspect-[1.6/1] overflow-hidden ${
+        className={`relative flex flex-col items-center justify-center border-2 border-dashed rounded-2xl aspect-[1.6/1] overflow-hidden transition-all ${
           person.licenseImage
             ? "border-accent bg-accent/5"
-            : "border-card-border hover:border-muted hover:bg-card/50"
+            : "border-card-border bg-card/50"
         }`}
       >
         {person.licenseImage ? (
@@ -102,7 +104,7 @@ export default function PageScan({ person, update, onNext, isCoApp }: Props) {
                   animate={{ top: ["10%", "90%", "10%"] }}
                   transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                 />
-                <p className="text-accent text-sm font-medium mt-4">Scanning...</p>
+                <p className="text-accent text-sm font-medium mt-4">Reading your license...</p>
               </motion.div>
             )}
             {scanComplete && !scanning && (
@@ -114,7 +116,7 @@ export default function PageScan({ person, update, onNext, isCoApp }: Props) {
             )}
           </>
         ) : (
-          <>
+          <div className="flex flex-col items-center justify-center p-8">
             <motion.div
               animate={{ scale: [1, 1.05, 1] }}
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
@@ -127,18 +129,53 @@ export default function PageScan({ person, update, onNext, isCoApp }: Props) {
                 <line x1="13" y1="14" x2="18" y2="14" strokeWidth={1.5} strokeLinecap="round" />
               </svg>
             </motion.div>
-            <p className="text-foreground font-medium mb-1">Tap to scan license</p>
-            <p className="text-xs text-muted">Front of ID, camera or photo</p>
-          </>
+            <p className="text-foreground font-medium mb-1">License photo</p>
+            <p className="text-xs text-muted text-center">Take a photo or choose from your library</p>
+          </div>
         )}
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleFileChange}
-        />
-      </motion.label>
+      </motion.div>
+
+      {/* Two separate buttons so iOS Safari reliably shows camera vs library */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => cameraInputRef.current?.click()}
+          disabled={scanning}
+          className="py-3 rounded-xl border border-card-border hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Take photo
+        </button>
+        <button
+          onClick={() => libraryInputRef.current?.click()}
+          disabled={scanning}
+          className="py-3 rounded-xl border border-card-border hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          From library
+        </button>
+      </div>
+
+      {/* Hidden inputs — one forces camera, one opens library */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <input
+        ref={libraryInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
 
       {error && <p className="text-xs text-error">{error}</p>}
 

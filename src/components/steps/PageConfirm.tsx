@@ -2,6 +2,7 @@
 
 import { motion } from "motion/react";
 import { Field, ContinueButton } from "@/components/ui/Field";
+import DateOfBirth from "@/components/ui/DateOfBirth";
 import type { PersonData } from "@/lib/types";
 
 type Props = {
@@ -72,24 +73,21 @@ export default function PageConfirm({ person, update, isPrimary, onNext }: Props
         autoFilled
       />
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field
-          label="Date of birth"
-          value={person.dob}
-          onChange={(v) => update({ dob: v })}
-          type="date"
-          required
-          autoFilled
-        />
-        <Field
-          label="Social security #"
-          value={person.ssn}
-          onChange={(v) => update({ ssn: v })}
-          placeholder="XXX-XX-XXXX"
-          inputMode="numeric"
-          required
-        />
-      </div>
+      <DateOfBirth
+        value={person.dob}
+        onChange={(v) => update({ dob: v })}
+        required
+        autoFilled
+      />
+
+      <Field
+        label="Social security #"
+        value={person.ssn}
+        onChange={(v) => update({ ssn: v })}
+        placeholder="XXX-XX-XXXX"
+        inputMode="numeric"
+        required
+      />
 
       <Field
         label="Driver's license #"

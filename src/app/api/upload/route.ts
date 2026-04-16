@@ -1,99 +1,134 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Handles driver's license scan + OCR extraction.
- * Returns extracted fields: firstName, middleName, lastName, dob, licenseNumber, address.
- *
- * Production: integrate Google Vision API, Mindee, or AWS Textract.
- * Cost: ~$0.05–0.10 per scan.
- *
- * For now: returns a placeholder structure. The DL scan UI will still preview
- * the image and auto-advance to the confirmation page where user can review/edit.
+ * Driver's license OCR via Claude Vision.
+ * Uses ANTHROPIC_API_KEY. No additional dependencies — calls the REST API directly.
+ * Extracts: firstName, middleName, lastName, dob (ISO YYYY-MM-DD), licenseNumber, address.
  */
+
+type Extracted = {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  dob: string;
+  licenseNumber: string;
+  address: string;
+};
+
+const EMPTY: Extracted = {
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  dob: "",
+  licenseNumber: "",
+  address: "",
+};
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
-
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // TODO: Replace this placeholder with real OCR when API key is configured
-    const ocrKey = process.env.GOOGLE_VISION_API_KEY || process.env.MINDEE_API_KEY;
-
-    if (ocrKey && process.env.OCR_PROVIDER === "mindee") {
-      return await runMindeeOCR(file);
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({
+        success: true,
+        extracted: EMPTY,
+        note: "OCR unavailable — enter details manually",
+      });
     }
 
-    // Placeholder: return empty extraction so user enters manually on confirm page
+    const extracted = await extractWithClaude(file, apiKey);
+    return NextResponse.json({ success: true, extracted });
+  } catch (err) {
+    console.error("OCR error:", err);
     return NextResponse.json({
       success: true,
-      extracted: {
-        firstName: "",
-        middleName: "",
-        lastName: "",
-        dob: "",
-        licenseNumber: "",
-        address: "",
-      },
-      note: "OCR provider not configured — manual entry required on next page",
+      extracted: EMPTY,
+      note: "OCR failed — enter details manually",
     });
-  } catch (err) {
-    console.error("Upload error:", err);
-    return NextResponse.json(
-      { error: "Failed to process upload" },
-      { status: 500 }
-    );
   }
 }
 
-async function runMindeeOCR(file: File) {
-  // Mindee US Driver License API
-  // https://docs.mindee.com/extraction/us-driver-license
+async function extractWithClaude(file: File, apiKey: string): Promise<Extracted> {
+  // Convert file to base64
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const base64 = buffer.toString("base64");
+  const mediaType = file.type && file.type.startsWith("image/") ? file.type : "image/jpeg";
+
+  const prompt = `Extract data from this US driver's license image. Return ONLY a JSON object with these exact keys:
+{
+  "firstName": "given name / first name",
+  "middleName": "middle name or empty string",
+  "lastName": "family name / last name / surname",
+  "dob": "date of birth in YYYY-MM-DD format",
+  "licenseNumber": "driver's license number / DL# / LIC#",
+  "address": "full address as it appears on the license"
+}
+
+Rules:
+- Use the EXACT spelling from the license
+- DOB must be YYYY-MM-DD (e.g. 1985-03-15). If month is written as abbreviation, convert.
+- If a field is not visible or unreadable, use empty string ""
+- Return ONLY the JSON, no markdown, no prose, no code fences
+- Do NOT hallucinate values — if uncertain, return empty string for that field`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 500,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mediaType,
+                data: base64,
+              },
+            },
+            { type: "text", text: prompt },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    console.error("Anthropic API error:", res.status, errText);
+    return EMPTY;
+  }
+
+  const data = await res.json();
+  const text: string = data?.content?.[0]?.text || "";
+
+  // Try to parse JSON out of the response (trim any accidental prose/code fences)
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return EMPTY;
+
   try {
-    const apiKey = process.env.MINDEE_API_KEY!;
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const form = new FormData();
-    form.append("document", new Blob([new Uint8Array(buffer)]), file.name);
-
-    const res = await fetch(
-      "https://api.mindee.net/v1/products/mindee/us_driver_license/v1/predict",
-      {
-        method: "POST",
-        headers: { Authorization: `Token ${apiKey}` },
-        body: form,
-      }
-    );
-
-    if (!res.ok) throw new Error("Mindee API error");
-    const data = await res.json();
-    const prediction = data.document?.inference?.prediction;
-
-    return NextResponse.json({
-      success: true,
-      extracted: {
-        firstName: prediction?.first_name?.value || "",
-        middleName: prediction?.middle_name?.value || "",
-        lastName: prediction?.last_name?.value || "",
-        dob: prediction?.date_of_birth?.value || "",
-        licenseNumber: prediction?.driver_license_id?.value || "",
-        address: prediction?.address?.value || "",
-      },
-    });
-  } catch (err) {
-    console.error("Mindee OCR failed:", err);
-    return NextResponse.json({
-      success: true,
-      extracted: {
-        firstName: "",
-        middleName: "",
-        lastName: "",
-        dob: "",
-        licenseNumber: "",
-        address: "",
-      },
-      note: "OCR failed, continue with manual entry",
-    });
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      firstName: typeof parsed.firstName === "string" ? parsed.firstName : "",
+      middleName: typeof parsed.middleName === "string" ? parsed.middleName : "",
+      lastName: typeof parsed.lastName === "string" ? parsed.lastName : "",
+      dob: typeof parsed.dob === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dob) ? parsed.dob : "",
+      licenseNumber: typeof parsed.licenseNumber === "string" ? parsed.licenseNumber : "",
+      address: typeof parsed.address === "string" ? parsed.address : "",
+    };
+  } catch {
+    return EMPTY;
   }
 }

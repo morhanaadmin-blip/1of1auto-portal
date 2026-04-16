@@ -20,7 +20,7 @@ export default function Header({ step, totalSteps }: Props) {
         {/* Logo — uses a fixed-size container with proper centering to avoid edge artifacts */}
         <div className="relative h-10 w-24 flex items-center">
           <Image
-            src="/logo-dark.png"
+            src="/logo-transparent.png"
             alt="1 OF 1 AUTO"
             width={96}
             height={40}

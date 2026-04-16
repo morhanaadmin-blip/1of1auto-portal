@@ -17,7 +17,7 @@ export default function PageConfirmation({ data }: Props) {
         className="max-w-sm w-full text-center space-y-8"
       >
         <Image
-          src="/logo-dark.png"
+          src="/logo-transparent.png"
           alt="1 OF 1 AUTO"
           width={100}
           height={50}

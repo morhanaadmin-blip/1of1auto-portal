@@ -1,6 +1,7 @@
 "use client";
 
 import { Field, ContinueButton } from "@/components/ui/Field";
+import DateOfBirth from "@/components/ui/DateOfBirth";
 import type { BusinessData } from "@/lib/types";
 
 type Props = {
@@ -121,23 +122,21 @@ export default function PageBusiness({ business, update, onNext }: Props) {
         required
       />
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field
-          label="Date established"
-          value={business.establishedDate}
-          onChange={(v) => update({ establishedDate: v })}
-          type="date"
-          required
-        />
-        <Field
-          label="State of incorporation"
-          value={business.stateOfIncorporation}
-          onChange={(v) => update({ stateOfIncorporation: v })}
-          placeholder="FL"
-          maxLength={2}
-          required
-        />
-      </div>
+      <DateOfBirth
+        label="Date business established"
+        value={business.establishedDate}
+        onChange={(v) => update({ establishedDate: v })}
+        required
+      />
+
+      <Field
+        label="State of incorporation"
+        value={business.stateOfIncorporation}
+        onChange={(v) => update({ stateOfIncorporation: v })}
+        placeholder="FL"
+        maxLength={2}
+        required
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <Field
