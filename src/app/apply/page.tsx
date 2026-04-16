@@ -1,0 +1,400 @@
+"use client";
+
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
+import Header from "@/components/Header";
+import PageScan from "@/components/steps/PageScan";
+import PageConfirm from "@/components/steps/PageConfirm";
+import PageHousing from "@/components/steps/PageHousing";
+import PageIncome from "@/components/steps/PageIncome";
+import PageEmployment from "@/components/steps/PageEmployment";
+import PageCoAppOrBusiness from "@/components/steps/PageCoAppOrBusiness";
+import PageBusiness from "@/components/steps/PageBusiness";
+import PageDocuments from "@/components/steps/PageDocuments";
+import PageAgreement from "@/components/steps/PageAgreement";
+import PageDepositSubmit from "@/components/steps/PageDepositSubmit";
+import PageConfirmation from "@/components/steps/PageConfirmation";
+import {
+  emptyApplication,
+  emptyPerson,
+  emptyBusiness,
+  type ApplicationData,
+  type PersonData,
+} from "@/lib/types";
+
+/**
+ * Flow routing:
+ * 0  = DL Scan (primary)
+ * 1  = Confirm Info (primary) — asks "is DL address your registering address?"
+ * 2  = Housing (primary, skip if DL != registering address and utility flagged)
+ * 3  = Income (primary)
+ * 4  = Employment (primary)
+ * 5  = Co-Applicant or Business branching decision
+ * 5a = Co-App DL Scan → Confirm → Housing → Income → Employment (no address question)
+ * 5b = Business Info → Bank Info → Housing → Income → Employment
+ * 6  = Documents (conditionally includes utility bill + business license)
+ * 7  = Agreement + Signature
+ * 8  = Deposit + Submit
+ * 9  = Confirmation (after submit)
+ */
+
+type Step =
+  | "scan-primary"
+  | "confirm-primary"
+  | "housing-primary"
+  | "income-primary"
+  | "employment-primary"
+  | "co-or-business"
+  | "scan-coapp"
+  | "confirm-coapp"
+  | "housing-coapp"
+  | "income-coapp"
+  | "employment-coapp"
+  | "business-info"
+  | "housing-business"
+  | "income-business"
+  | "employment-business"
+  | "documents"
+  | "agreement"
+  | "deposit"
+  | "confirmation";
+
+function ApplyFlow() {
+  const searchParams = useSearchParams();
+  const [step, setStep] = useState<Step>("scan-primary");
+  const [data, setData] = useState<ApplicationData>(emptyApplication());
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  // Pre-fill primary applicant from URL (CRM data Mor provides)
+  useEffect(() => {
+    setData((prev) => ({
+      ...prev,
+      primary: {
+        ...prev.primary,
+        firstName: searchParams.get("fn") || "",
+        middleName: searchParams.get("mn") || "",
+        lastName: searchParams.get("ln") || "",
+        email: searchParams.get("email") || "",
+        phone: searchParams.get("phone") || "",
+      },
+    }));
+  }, [searchParams]);
+
+  const updatePrimary = (fields: Partial<PersonData>) => {
+    setData((prev) => ({ ...prev, primary: { ...prev.primary, ...fields } }));
+    setError("");
+  };
+
+  const updateCoApp = (fields: Partial<PersonData>) => {
+    setData((prev) => ({
+      ...prev,
+      coApplicant: { ...(prev.coApplicant || emptyPerson()), ...fields },
+    }));
+    setError("");
+  };
+
+  const updateBusiness = (fields: Partial<ApplicationData["business"]>) => {
+    setData((prev) => ({
+      ...prev,
+      business: { ...(prev.business || emptyBusiness()), ...fields } as ApplicationData["business"],
+    }));
+    setError("");
+  };
+
+  const updateDocuments = (fields: Partial<ApplicationData["documents"]>) => {
+    setData((prev) => ({ ...prev, documents: { ...prev.documents, ...fields } }));
+    setError("");
+  };
+
+  const updateAgreement = (fields: Partial<ApplicationData["agreement"]>) => {
+    setData((prev) => ({ ...prev, agreement: { ...prev.agreement, ...fields } }));
+    setError("");
+  };
+
+  /**
+   * setMode — switches application type WITHOUT wiping data.
+   * Creates empty co-applicant/business only if one doesn't already exist.
+   * Previously-entered co-applicant and business data is preserved even when
+   * the user toggles mode back and forth.
+   */
+  const setMode = (mode: ApplicationData["mode"]) => {
+    setData((prev) => ({
+      ...prev,
+      mode,
+      coApplicant:
+        mode === "co-applicant"
+          ? prev.coApplicant || emptyPerson()
+          : prev.coApplicant, // preserve even when switching away
+      business:
+        mode === "business"
+          ? prev.business || emptyBusiness()
+          : prev.business, // preserve even when switching away
+    }));
+  };
+
+  // Navigation logic — spec-driven branching
+  const next = () => {
+    switch (step) {
+      case "scan-primary":
+        setStep("confirm-primary");
+        break;
+      case "confirm-primary":
+        setStep("housing-primary");
+        break;
+      case "housing-primary":
+        setStep("income-primary");
+        break;
+      case "income-primary":
+        setStep("employment-primary");
+        break;
+      case "employment-primary":
+        setStep("co-or-business");
+        break;
+      case "co-or-business":
+        if (data.mode === "co-applicant") setStep("scan-coapp");
+        else if (data.mode === "business") setStep("business-info");
+        else setStep("documents");
+        break;
+      case "scan-coapp":
+        setStep("confirm-coapp");
+        break;
+      case "confirm-coapp":
+        setStep("housing-coapp");
+        break;
+      case "housing-coapp":
+        setStep("income-coapp");
+        break;
+      case "income-coapp":
+        setStep("employment-coapp");
+        break;
+      case "employment-coapp":
+        setStep("documents");
+        break;
+      case "business-info":
+        setStep("housing-business");
+        break;
+      case "housing-business":
+        setStep("income-business");
+        break;
+      case "income-business":
+        setStep("employment-business");
+        break;
+      case "employment-business":
+        setStep("documents");
+        break;
+      case "documents":
+        setStep("agreement");
+        break;
+      case "agreement":
+        setStep("deposit");
+        break;
+      case "deposit":
+        setStep("confirmation");
+        break;
+    }
+  };
+
+  const back = () => {
+    switch (step) {
+      case "confirm-primary": setStep("scan-primary"); break;
+      case "housing-primary": setStep("confirm-primary"); break;
+      case "income-primary": setStep("housing-primary"); break;
+      case "employment-primary": setStep("income-primary"); break;
+      case "co-or-business": setStep("employment-primary"); break;
+      case "scan-coapp": setStep("co-or-business"); break;
+      case "confirm-coapp": setStep("scan-coapp"); break;
+      case "housing-coapp": setStep("confirm-coapp"); break;
+      case "income-coapp": setStep("housing-coapp"); break;
+      case "employment-coapp": setStep("income-coapp"); break;
+      case "business-info": setStep("co-or-business"); break;
+      case "housing-business": setStep("business-info"); break;
+      case "income-business": setStep("housing-business"); break;
+      case "employment-business": setStep("income-business"); break;
+      case "documents":
+        if (data.mode === "co-applicant") setStep("employment-coapp");
+        else if (data.mode === "business") setStep("employment-business");
+        else setStep("co-or-business");
+        break;
+      case "agreement": setStep("documents"); break;
+      case "deposit": setStep("agreement"); break;
+    }
+  };
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("application", JSON.stringify({
+        ...data,
+        primary: { ...data.primary, licenseFile: null, licenseImage: null },
+        coApplicant: data.coApplicant
+          ? { ...data.coApplicant, licenseFile: null, licenseImage: null }
+          : null,
+      }));
+
+      if (data.primary.licenseFile) formData.append("primary_license", data.primary.licenseFile);
+      if (data.coApplicant?.licenseFile) formData.append("coapp_license", data.coApplicant.licenseFile);
+      if (data.documents.insurance) formData.append("insurance", data.documents.insurance);
+      if (data.documents.registration) formData.append("registration", data.documents.registration);
+      if (data.documents.utilityBill) formData.append("utility_bill", data.documents.utilityBill);
+      if (data.documents.businessLicense) formData.append("business_license", data.documents.businessLicense);
+
+      const res = await fetch("/api/submit", { method: "POST", body: formData });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: "Submission failed" }));
+        throw new Error(body.error || "Submission failed");
+      }
+      next();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Submission failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Calculate total steps + current step index for progress bar
+  const getStepIndex = (): [number, number] => {
+    const primarySteps = ["scan-primary", "confirm-primary", "housing-primary", "income-primary", "employment-primary"];
+    const decisionStep = ["co-or-business"];
+    const coAppSteps = ["scan-coapp", "confirm-coapp", "housing-coapp", "income-coapp", "employment-coapp"];
+    const businessSteps = ["business-info", "housing-business", "income-business", "employment-business"];
+    const endSteps = ["documents", "agreement", "deposit"];
+
+    const baseTotal = primarySteps.length + decisionStep.length;
+    let total = baseTotal;
+    if (data.mode === "co-applicant") total += coAppSteps.length;
+    if (data.mode === "business") total += businessSteps.length;
+    total += endSteps.length;
+
+    const allInOrder = [
+      ...primarySteps,
+      ...decisionStep,
+      ...(data.mode === "co-applicant" ? coAppSteps : []),
+      ...(data.mode === "business" ? businessSteps : []),
+      ...endSteps,
+    ];
+    const current = allInOrder.indexOf(step as string);
+    return [current >= 0 ? current : 0, total];
+  };
+
+  const [currentIdx, totalSteps] = getStepIndex();
+
+  if (step === "confirmation") {
+    return <PageConfirmation data={data} />;
+  }
+
+  return (
+    <main className="min-h-screen flex flex-col">
+      <Header step={currentIdx} totalSteps={totalSteps} />
+
+      <div className="flex-1 w-full max-w-lg mx-auto px-5 py-6">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+          >
+            {/* Render the correct step component */}
+            {step === "scan-primary" && (
+              <PageScan person={data.primary} update={updatePrimary} onNext={next} />
+            )}
+            {step === "confirm-primary" && (
+              <PageConfirm person={data.primary} update={updatePrimary} isPrimary={true} onNext={next} />
+            )}
+            {step === "housing-primary" && (
+              <PageHousing person={data.primary} update={updatePrimary} onNext={next} />
+            )}
+            {step === "income-primary" && (
+              <PageIncome person={data.primary} update={updatePrimary} onNext={next} />
+            )}
+            {step === "employment-primary" && (
+              <PageEmployment person={data.primary} update={updatePrimary} onNext={next} />
+            )}
+            {step === "co-or-business" && (
+              <PageCoAppOrBusiness mode={data.mode} setMode={setMode} onNext={next} />
+            )}
+            {step === "scan-coapp" && data.coApplicant && (
+              <PageScan person={data.coApplicant} update={updateCoApp} onNext={next} isCoApp={true} />
+            )}
+            {step === "confirm-coapp" && data.coApplicant && (
+              <PageConfirm person={data.coApplicant} update={updateCoApp} isPrimary={false} onNext={next} />
+            )}
+            {step === "housing-coapp" && data.coApplicant && (
+              <PageHousing person={data.coApplicant} update={updateCoApp} onNext={next} />
+            )}
+            {step === "income-coapp" && data.coApplicant && (
+              <PageIncome person={data.coApplicant} update={updateCoApp} onNext={next} />
+            )}
+            {step === "employment-coapp" && data.coApplicant && (
+              <PageEmployment person={data.coApplicant} update={updateCoApp} onNext={next} />
+            )}
+            {step === "business-info" && (
+              <PageBusiness business={data.business!} update={updateBusiness} onNext={next} />
+            )}
+            {step === "housing-business" && (
+              <PageHousing person={data.primary} update={updatePrimary} onNext={next} />
+            )}
+            {step === "income-business" && (
+              <PageIncome person={data.primary} update={updatePrimary} onNext={next} />
+            )}
+            {step === "employment-business" && (
+              <PageEmployment person={data.primary} update={updatePrimary} onNext={next} />
+            )}
+            {step === "documents" && (
+              <PageDocuments
+                data={data}
+                updateDocs={updateDocuments}
+                onNext={next}
+              />
+            )}
+            {step === "agreement" && (
+              <PageAgreement agreement={data.agreement} update={updateAgreement} onNext={next} />
+            )}
+            {step === "deposit" && (
+              <PageDepositSubmit
+                data={data}
+                setData={setData}
+                submit={submit}
+                submitting={submitting}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {error && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 text-sm text-error text-center"
+          >
+            {error}
+          </motion.p>
+        )}
+
+        {step !== "scan-primary" && step !== "scan-coapp" && (
+          <div className="mt-8 flex justify-center">
+            <button
+              onClick={back}
+              className="text-xs text-muted hover:text-foreground transition-colors"
+            >
+              ← Back
+            </button>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
+export default function ApplyPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
+      <ApplyFlow />
+    </Suspense>
+  );
+}
