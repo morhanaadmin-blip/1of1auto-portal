@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Driver's license OCR via Claude Vision.
- * Uses ANTHROPIC_API_KEY. No additional dependencies — calls the REST API directly.
- * Extracts: firstName, middleName, lastName, dob (ISO YYYY-MM-DD), licenseNumber, address.
+ * Returns extracted fields + debug info so we can diagnose any failures end-to-end.
  */
 
 type Extracted = {
@@ -25,6 +24,7 @@ const EMPTY: Extracted = {
 };
 
 export async function POST(req: NextRequest) {
+  const debug: Record<string, unknown> = {};
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -32,91 +32,125 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
+    debug.fileName = file.name;
+    debug.fileSize = file.size;
+    debug.fileType = file.type;
+
     const apiKey = process.env.ANTHROPIC_API_KEY;
+    debug.keyPresent = !!apiKey;
+    debug.keyLength = apiKey?.length || 0;
+
     if (!apiKey) {
       return NextResponse.json({
         success: true,
         extracted: EMPTY,
-        note: "OCR unavailable — enter details manually",
+        note: "OCR unavailable — no API key configured. Enter manually.",
+        debug,
       });
     }
 
-    const extracted = await extractWithClaude(file, apiKey);
-    return NextResponse.json({ success: true, extracted });
+    const result = await extractWithClaude(file, apiKey, debug);
+    return NextResponse.json({
+      success: true,
+      extracted: result,
+      debug,
+    });
   } catch (err) {
     console.error("OCR error:", err);
+    debug.error = err instanceof Error ? err.message : String(err);
     return NextResponse.json({
       success: true,
       extracted: EMPTY,
       note: "OCR failed — enter details manually",
+      debug,
     });
   }
 }
 
-async function extractWithClaude(file: File, apiKey: string): Promise<Extracted> {
-  // Convert file to base64
+async function extractWithClaude(
+  file: File,
+  apiKey: string,
+  debug: Record<string, unknown>
+): Promise<Extracted> {
   const buffer = Buffer.from(await file.arrayBuffer());
   const base64 = buffer.toString("base64");
-  const mediaType = file.type && file.type.startsWith("image/") ? file.type : "image/jpeg";
 
-  const prompt = `Extract data from this US driver's license image. Return ONLY a JSON object with these exact keys:
+  // Normalize media type — iOS sometimes sends "image/heic" which Claude doesn't
+  // accept. Default to JPEG since browsers almost always produce that for photos.
+  let mediaType = file.type && file.type.startsWith("image/") ? file.type : "image/jpeg";
+  if (mediaType === "image/heic" || mediaType === "image/heif") {
+    // Claude supports jpeg/png/gif/webp — HEIC must be transcoded. Fall back to
+    // sending as jpeg (most iOS photos are also saved as jpeg in-browser).
+    mediaType = "image/jpeg";
+  }
+  debug.mediaType = mediaType;
+  debug.base64Length = base64.length;
+
+  const prompt = `You are looking at a US driver's license. Extract the following fields and return ONLY a JSON object (no prose, no code fences, no markdown):
+
 {
-  "firstName": "given name / first name",
-  "middleName": "middle name or empty string",
-  "lastName": "family name / last name / surname",
-  "dob": "date of birth in YYYY-MM-DD format",
-  "licenseNumber": "driver's license number / DL# / LIC#",
-  "address": "full address as it appears on the license"
+  "firstName": "given/first name exactly as printed",
+  "middleName": "middle name or initial, or empty string",
+  "lastName": "family/last name exactly as printed",
+  "dob": "date of birth as YYYY-MM-DD (e.g. 1985-03-15)",
+  "licenseNumber": "the driver's license number / DL# / LIC#",
+  "address": "full street address as one line (Street, City, State ZIP)"
 }
 
 Rules:
-- Use the EXACT spelling from the license
-- DOB must be YYYY-MM-DD (e.g. 1985-03-15). If month is written as abbreviation, convert.
-- If a field is not visible or unreadable, use empty string ""
-- Return ONLY the JSON, no markdown, no prose, no code fences
-- Do NOT hallucinate values — if uncertain, return empty string for that field`;
+- Return ONLY the JSON object, nothing else
+- Do NOT hallucinate — if a field is unclear, return empty string ""
+- DOB must be YYYY-MM-DD format even if printed differently on license`;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 500,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: mediaType,
-                data: base64,
+  let res: Response;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 600,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: mediaType, data: base64 },
               },
-            },
-            { type: "text", text: prompt },
-          ],
-        },
-      ],
-    }),
-  });
+              { type: "text", text: prompt },
+            ],
+          },
+        ],
+      }),
+    });
+  } catch (networkErr) {
+    debug.networkError = networkErr instanceof Error ? networkErr.message : String(networkErr);
+    return EMPTY;
+  }
+
+  debug.apiStatus = res.status;
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
+    debug.apiError = errText.slice(0, 500);
     console.error("Anthropic API error:", res.status, errText);
     return EMPTY;
   }
 
   const data = await res.json();
   const text: string = data?.content?.[0]?.text || "";
+  debug.rawResponsePreview = text.slice(0, 300);
 
-  // Try to parse JSON out of the response (trim any accidental prose/code fences)
   const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return EMPTY;
+  if (!jsonMatch) {
+    debug.parseError = "no JSON object found in response";
+    return EMPTY;
+  }
 
   try {
     const parsed = JSON.parse(jsonMatch[0]);
@@ -124,11 +158,15 @@ Rules:
       firstName: typeof parsed.firstName === "string" ? parsed.firstName : "",
       middleName: typeof parsed.middleName === "string" ? parsed.middleName : "",
       lastName: typeof parsed.lastName === "string" ? parsed.lastName : "",
-      dob: typeof parsed.dob === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dob) ? parsed.dob : "",
+      dob:
+        typeof parsed.dob === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dob)
+          ? parsed.dob
+          : "",
       licenseNumber: typeof parsed.licenseNumber === "string" ? parsed.licenseNumber : "",
       address: typeof parsed.address === "string" ? parsed.address : "",
     };
-  } catch {
+  } catch (parseErr) {
+    debug.parseError = parseErr instanceof Error ? parseErr.message : String(parseErr);
     return EMPTY;
   }
 }

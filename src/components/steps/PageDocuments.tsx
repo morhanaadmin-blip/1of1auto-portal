@@ -50,10 +50,10 @@ function DocUploader({
       </div>
       <p className="text-xs text-muted mb-2">{description}</p>
       {file && <p className="text-xs text-accent truncate">{file.name}</p>}
+      {/* No capture attr — lets iOS/Android show both Camera and Library options */}
       <input
         type="file"
         accept="image/*,.pdf"
-        capture="environment"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

@@ -39,17 +39,29 @@ export default function PageScan({ person, update, onNext, isCoApp }: Props) {
       const result = await res.json();
 
       if (result.success && result.extracted) {
+        const ex = result.extracted;
+        const anyFilled = ex.firstName || ex.lastName || ex.dob || ex.licenseNumber || ex.address;
         update({
-          firstName: result.extracted.firstName || person.firstName,
-          middleName: result.extracted.middleName || person.middleName,
-          lastName: result.extracted.lastName || person.lastName,
-          dob: result.extracted.dob || person.dob,
-          licenseNumber: result.extracted.licenseNumber || person.licenseNumber,
-          licenseAddress: result.extracted.address || person.licenseAddress,
+          firstName: ex.firstName || person.firstName,
+          middleName: ex.middleName || person.middleName,
+          lastName: ex.lastName || person.lastName,
+          dob: ex.dob || person.dob,
+          licenseNumber: ex.licenseNumber || person.licenseNumber,
+          licenseAddress: ex.address || person.licenseAddress,
         });
+        if (!anyFilled) {
+          setError(
+            result.note ||
+              "Couldn't read all fields — you can fill them in manually on the next page."
+          );
+        }
+      } else {
+        setError(result.note || "Scan returned no data — fill in manually on next page.");
       }
-    } catch {
-      setError("Couldn't read your license automatically — you can still continue and enter details manually on the next page.");
+    } catch (err) {
+      setError(
+        `Scan failed: ${err instanceof Error ? err.message : "unknown error"}. Enter details manually on the next page.`
+      );
     } finally {
       setScanning(false);
       setScanComplete(true);

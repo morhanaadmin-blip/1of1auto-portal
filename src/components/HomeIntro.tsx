@@ -3,201 +3,268 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { motion, AnimatePresence, useAnimate, stagger } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 
 /**
- * Premium cinematic logo reveal — "Signature Strike"
+ * Netflix-style reveal — the logo IS the animation.
  *
- * Phase 1 (0–0.4s): Darkened screen, vignette intensifies
- * Phase 2 (0.4–0.7s): A horizontal light beam sweeps left → right (spotlight pass)
- * Phase 3 (0.6–1.3s): Blue slash rockets in from top-right with motion blur
- *                     Silver slash rockets in from bottom-left (parallel timing)
- *                     Slight screen-impact flash when they lock into place
- * Phase 4 (1.3–2.2s): "1 OF 1" text materializes letter-by-letter, each with
- *                     a tiny gold spark on appearance. Characters lock into
- *                     formation.
- * Phase 5 (2.2–2.8s): Gold chrome shimmer sweeps across the full logo
- *                     (like sunlight on a car hood). Soft glow pulse starts.
- * Phase 6 (2.8–3.4s): Logo breathes with a subtle glow. Tagline fades in.
- *                     Invitation copy + button reveal in sequence.
+ * Phase 1 (0–0.8s): Two giant slashes (blue + silver) streak across the full
+ *   viewport diagonally, crossing at center. Blue from top-right, silver from
+ *   bottom-left. They are huge — spanning the entire page width. Motion blur.
  *
- * Total sequence: ~3.4 seconds. Worth the wait.
+ * Phase 2 (0.8–1.6s): "1 OF 1" text slams in at massive scale (3x),
+ *   filling the center. Subtle chromatic aberration on impact. The slashes
+ *   start shrinking toward their final positions.
+ *
+ * Phase 3 (1.6–2.4s): Everything converges — slashes + text all scale DOWN
+ *   simultaneously into the final logo composition. Like collapsing an
+ *   expanded view into an icon (Netflix reveal pattern).
+ *
+ * Phase 4 (2.4–2.8s): Final logo holds, subtle glow pulse starts, gold
+ *   shimmer sweeps across once.
+ *
+ * Phase 5 (2.8s+): Tagline fades in, then invitation + CTA.
  */
 export default function HomeIntro() {
-  const [phase, setPhase] = useState<0 | 1 | 2 | 3 | 4 | 5 | 6>(0);
+  const [phase, setPhase] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
 
   useEffect(() => {
     const timers = [
-      setTimeout(() => setPhase(1), 100),   // spotlight sweep begins
-      setTimeout(() => setPhase(2), 400),   // slashes fly in
-      setTimeout(() => setPhase(3), 1100),  // impact flash + text reveal begins
-      setTimeout(() => setPhase(4), 2000),  // shimmer pass
-      setTimeout(() => setPhase(5), 2700),  // breathing + tagline
-      setTimeout(() => setPhase(6), 3200),  // CTA reveals
+      setTimeout(() => setPhase(1), 100),   // slashes begin entering huge
+      setTimeout(() => setPhase(2), 800),   // text slams in
+      setTimeout(() => setPhase(3), 1600),  // collapse to final logo
+      setTimeout(() => setPhase(4), 2400),  // final polish — shimmer
+      setTimeout(() => setPhase(5), 3000),  // tagline + CTA
     ];
     return () => timers.forEach(clearTimeout);
   }, []);
 
+  // SVG slash — parallelogram shape matching the logo
+  // skewX(-20deg) applied to make diagonals
   return (
     <main className="flex flex-col items-center justify-center min-h-screen px-6 py-12 relative overflow-hidden">
-      {/* Intensified vignette during intro */}
+      {/* ——— PHASE 1–3: Giant slashes animating across the viewport ——— */}
+
+      {/* Blue slash — from top-right, streaks across, lands in position */}
       <motion.div
-        initial={{ opacity: 1 }}
-        animate={{ opacity: phase < 4 ? 1 : 0.4 }}
-        transition={{ duration: 0.8 }}
-        className="fixed inset-0 pointer-events-none z-[1]"
+        className="fixed pointer-events-none z-20"
+        initial={{
+          top: "-20%",
+          left: "80%",
+          width: "30vw",
+          height: "120vh",
+          opacity: 0,
+          rotate: -20,
+          filter: "blur(6px)",
+        }}
+        animate={
+          phase === 0
+            ? { opacity: 0 }
+            : phase < 3
+              ? { // Crossing phase — big, moving, blurred
+                  opacity: 1,
+                  top: "10%",
+                  left: "30%",
+                  width: "40vw",
+                  height: "80vh",
+                  rotate: -20,
+                  filter: "blur(2px)",
+                }
+              : { // Final logo position — small, sharp
+                  opacity: 1,
+                  top: "50%",
+                  left: "50%",
+                  width: "60px",
+                  height: "180px",
+                  translateX: "-50%",
+                  translateY: "-100%",
+                  rotate: -20,
+                  filter: "blur(0px)",
+                }
+        }
+        transition={{
+          duration: phase < 3 ? 0.8 : 1.0,
+          ease: phase < 3 ? [0.22, 1, 0.36, 1] : [0.65, 0, 0.35, 1],
+        }}
         style={{
-          background: "radial-gradient(ellipse at center, transparent 20%, rgba(0,0,0,0.7) 100%)",
+          background: "linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%)",
+          borderRadius: "4px",
         }}
       />
 
-      {/* Horizontal spotlight sweep — Phase 2 */}
-      {phase >= 1 && phase < 4 && (
-        <motion.div
-          initial={{ x: "-100vw", opacity: 0 }}
-          animate={{ x: "100vw", opacity: [0, 0.8, 0] }}
-          transition={{ duration: 1.2, ease: "easeInOut" }}
-          className="fixed top-1/2 left-0 h-64 w-[40vw] pointer-events-none z-[2]"
-          style={{
-            background: "linear-gradient(90deg, transparent, rgba(255, 220, 150, 0.25), transparent)",
-            filter: "blur(40px)",
-            transform: "translateY(-50%)",
-          }}
-        />
-      )}
+      {/* Silver slash — from bottom-left, parallel to blue */}
+      <motion.div
+        className="fixed pointer-events-none z-20"
+        initial={{
+          bottom: "-20%",
+          right: "80%",
+          width: "30vw",
+          height: "120vh",
+          opacity: 0,
+          rotate: -20,
+          filter: "blur(6px)",
+        }}
+        animate={
+          phase === 0
+            ? { opacity: 0 }
+            : phase < 3
+              ? {
+                  opacity: 1,
+                  bottom: "10%",
+                  right: "30%",
+                  width: "40vw",
+                  height: "80vh",
+                  rotate: -20,
+                  filter: "blur(2px)",
+                }
+              : {
+                  opacity: 1,
+                  bottom: "50%",
+                  right: "50%",
+                  width: "60px",
+                  height: "180px",
+                  translateX: "50%",
+                  translateY: "100%",
+                  rotate: -20,
+                  filter: "blur(0px)",
+                }
+        }
+        transition={{
+          duration: phase < 3 ? 0.8 : 1.0,
+          ease: phase < 3 ? [0.22, 1, 0.36, 1] : [0.65, 0, 0.35, 1],
+          delay: phase < 3 ? 0.08 : 0,
+        }}
+        style={{
+          background: "linear-gradient(180deg, #e5e7eb 0%, #94a3b8 100%)",
+          borderRadius: "4px",
+        }}
+      />
 
-      {/* Impact flash — Phase 3 */}
+      {/* Impact flash when slashes cross — Phase 2 start */}
       <AnimatePresence>
         {phase === 2 && (
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.15, 0] }}
+            animate={{ opacity: [0, 0.2, 0] }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.3, times: [0, 0.3, 1] }}
-            className="fixed inset-0 bg-white pointer-events-none z-[3]"
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 bg-white pointer-events-none z-30"
           />
         )}
       </AnimatePresence>
 
-      {/* Main stage */}
-      <div className="relative z-10 flex flex-col items-center text-center w-full max-w-sm">
-        {/* Logo container */}
-        <div className="relative flex items-center justify-center" style={{ width: 280, height: 280 }}>
-          {/* Logo settles — fades in once slashes have landed */}
+      {/* ——— GIANT "1 OF 1" text — slams in Phase 2, collapses Phase 3 ——— */}
+      <motion.div
+        className="fixed pointer-events-none z-30 flex items-center justify-center top-1/2 left-1/2 font-black text-white select-none"
+        style={{
+          translateX: "-50%",
+          translateY: "-50%",
+          fontSize: "18vw",
+          letterSpacing: "-0.05em",
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          whiteSpace: "nowrap",
+        }}
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={
+          phase < 2
+            ? { opacity: 0, scale: 0.5 }
+            : phase === 2
+              ? { opacity: 1, scale: 1, filter: "blur(0px)" }
+              : { opacity: 0, scale: 0.15, filter: "blur(2px)" } // collapse into logo position
+        }
+        transition={{
+          opacity: { duration: 0.3 },
+          scale: {
+            type: phase === 2 ? "spring" : "tween",
+            stiffness: 140,
+            damping: 12,
+            duration: phase < 2 ? 0 : 1.0,
+            ease: [0.65, 0, 0.35, 1],
+          },
+        }}
+      >
+        1 OF 1
+      </motion.div>
+
+      {/* ——— FINAL LOGO — fades in as SVG elements converge ——— */}
+      <motion.div
+        className="relative z-10"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{
+          opacity: phase >= 3 ? 1 : 0,
+          scale: phase >= 3 ? 1 : 0.8,
+        }}
+        transition={{
+          opacity: { duration: 0.8, delay: phase >= 3 ? 0.6 : 0 },
+          scale: {
+            type: "spring",
+            stiffness: 180,
+            damping: 22,
+            delay: phase >= 3 ? 0.6 : 0,
+          },
+        }}
+      >
+        <div className="relative" style={{ width: 260, height: 260 }}>
+          <Image
+            src="/logo-transparent.png"
+            alt="1 OF 1 AUTO"
+            width={260}
+            height={260}
+            priority
+            className="object-contain select-none relative z-10"
+            draggable={false}
+          />
+
+          {/* Breathing glow after converge */}
           <motion.div
-            initial={{ scale: 0.2, opacity: 0 }}
+            initial={{ opacity: 0 }}
             animate={{
-              scale: phase >= 5 ? 1 : phase >= 2 ? 1.35 : 0.2,
-              opacity: phase >= 2 ? 1 : 0,
+              opacity: phase >= 4 ? [0.2, 0.45, 0.2] : 0,
             }}
-            transition={{
-              scale: {
-                type: "spring",
-                stiffness: phase >= 5 ? 200 : 150,
-                damping: phase >= 5 ? 24 : 16,
-              },
-              opacity: { duration: 0.4 },
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: "radial-gradient(circle, rgba(201, 168, 76, 0.35) 0%, transparent 60%)",
+              filter: "blur(30px)",
+              zIndex: 0,
             }}
-            className="relative"
-          >
-            <Image
-              src="/logo-transparent.png"
-              alt="1 OF 1 AUTO"
-              width={280}
-              height={280}
-              priority
-              className="object-contain select-none relative z-10"
-              draggable={false}
-            />
+          />
 
-            {/* Breathing glow — starts after Phase 5 */}
+          {/* Single shimmer pass once */}
+          {phase === 4 && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{
-                opacity: phase >= 4 ? [0.3, 0.5, 0.3] : 0,
-              }}
-              transition={{
-                duration: 3,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
-              className="absolute inset-0 pointer-events-none"
+              initial={{ x: "-120%", opacity: 0 }}
+              animate={{ x: "120%", opacity: [0, 1, 0] }}
+              transition={{ duration: 1.2, ease: "easeInOut" }}
+              className="absolute inset-0 pointer-events-none z-20"
               style={{
-                background: "radial-gradient(circle, rgba(201, 168, 76, 0.3) 0%, transparent 60%)",
-                filter: "blur(30px)",
-                zIndex: 0,
+                background:
+                  "linear-gradient(110deg, transparent 40%, rgba(255, 220, 140, 0.6) 50%, transparent 60%)",
+                mixBlendMode: "overlay",
               }}
             />
-
-            {/* Gold chrome shimmer sweep — Phase 4 */}
-            {phase === 4 && (
-              <motion.div
-                initial={{ x: "-120%", opacity: 0 }}
-                animate={{ x: "120%", opacity: [0, 1, 0] }}
-                transition={{ duration: 1.1, ease: "easeInOut" }}
-                className="absolute inset-0 pointer-events-none z-20"
-                style={{
-                  background:
-                    "linear-gradient(110deg, transparent 0%, transparent 40%, rgba(255, 220, 140, 0.6) 50%, transparent 60%, transparent 100%)",
-                  mixBlendMode: "overlay",
-                }}
-              />
-            )}
-          </motion.div>
-
-          {/* Sparks/particles — subtle */}
-          {phase >= 2 && phase < 5 && (
-            <div className="absolute inset-0 pointer-events-none">
-              {[
-                { x: -80, y: -60 },
-                { x: 70, y: -40 },
-                { x: -40, y: 60 },
-                { x: 80, y: 70 },
-              ].map((p, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, scale: 0 }}
-                  animate={{
-                    opacity: [0, 1, 0],
-                    scale: [0, 1.5, 0],
-                    x: p.x,
-                    y: p.y,
-                  }}
-                  transition={{
-                    duration: 1.2,
-                    delay: 1.3 + i * 0.1,
-                    ease: "easeOut",
-                  }}
-                  className="absolute top-1/2 left-1/2 w-1.5 h-1.5 rounded-full"
-                  style={{
-                    background:
-                      "radial-gradient(circle, rgba(255, 220, 140, 1) 0%, rgba(255, 220, 140, 0) 70%)",
-                    filter: "blur(1px)",
-                  }}
-                />
-              ))}
-            </div>
           )}
         </div>
+      </motion.div>
 
-        {/* Tagline — "Like No Other" */}
+      {/* ——— Tagline + CTA ——— */}
+      <div className="relative z-10 flex flex-col items-center text-center w-full max-w-sm">
         <AnimatePresence>
-          {phase >= 5 && (
+          {phase >= 4 && (
             <motion.p
               initial={{ opacity: 0, y: 12, letterSpacing: "0.15em" }}
               animate={{ opacity: 1, y: 0, letterSpacing: "0.35em" }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.9, ease: "easeOut" }}
-              className="mt-2 text-[11px] uppercase text-accent font-medium"
+              className="mt-4 text-[11px] uppercase text-accent font-medium"
             >
               Like No Other
             </motion.p>
           )}
         </AnimatePresence>
 
-        {/* Invitation + CTA */}
         <AnimatePresence>
-          {phase >= 6 && (
+          {phase >= 5 && (
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}

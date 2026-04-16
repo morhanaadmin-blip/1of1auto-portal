@@ -76,21 +76,26 @@ input[type="file"] {
   50% { transform: translate(3vw, -6vh) scale(1.15); }
 }
 
-.animate-blob-1 {
-  animation: blob-drift-1 22s ease-in-out infinite;
+@keyframes blob-drift-4 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  40% { transform: translate(-5vw, 6vh) scale(1.12); }
+  80% { transform: translate(3vw, -4vh) scale(0.95); }
 }
 
-.animate-blob-2 {
-  animation: blob-drift-2 28s ease-in-out infinite;
+@keyframes blob-drift-5 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(6vw, -4vh) scale(1.1); }
 }
 
-.animate-blob-3 {
-  animation: blob-drift-3 34s ease-in-out infinite;
-}
+.animate-blob-1 { animation: blob-drift-1 22s ease-in-out infinite; }
+.animate-blob-2 { animation: blob-drift-2 28s ease-in-out infinite; }
+.animate-blob-3 { animation: blob-drift-3 34s ease-in-out infinite; }
+.animate-blob-4 { animation: blob-drift-4 26s ease-in-out infinite; }
+.animate-blob-5 { animation: blob-drift-5 30s ease-in-out infinite; }
 
 /* Respect reduced-motion preference */
 @media (prefers-reduced-motion: reduce) {
-  .animate-blob-1, .animate-blob-2, .animate-blob-3 {
+  .animate-blob-1, .animate-blob-2, .animate-blob-3, .animate-blob-4, .animate-blob-5 {
     animation: none;
   }
 }
