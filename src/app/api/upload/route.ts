@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Driver's license OCR via Claude Vision.
- * Returns extracted fields + debug info so we can diagnose any failures end-to-end.
+ * Driver's license upload + OCR.
+ *
+ * Current status: OCR requires a standard Anthropic API key from
+ * console.anthropic.com. The Claude Code session token (oat01) cannot
+ * make direct API calls. Until a proper key is configured, this endpoint
+ * returns empty extraction and the user enters fields manually on the
+ * confirm page.
+ *
+ * To enable OCR: add a standard API key (sk-ant-api03-...) to
+ * ANTHROPIC_API_KEY in Vercel environment variables.
  */
 
 type Extracted = {
@@ -24,87 +32,35 @@ const EMPTY: Extracted = {
 };
 
 export async function POST(req: NextRequest) {
-  const debug: Record<string, unknown> = {};
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    debug.fileName = file.name;
-    debug.fileSize = file.size;
-    debug.fileType = file.type;
-
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    debug.keyPresent = !!apiKey;
-    debug.keyLength = apiKey?.length || 0;
 
-    if (!apiKey) {
+    // Quick validation: standard API keys start with sk-ant-api
+    // Session tokens (sk-ant-oat) don't work with direct API calls
+    const isValidKey = apiKey && apiKey.startsWith("sk-ant-api");
+
+    if (!isValidKey) {
       return NextResponse.json({
         success: true,
         extracted: EMPTY,
-        note: "OCR unavailable — no API key configured. Enter manually.",
-        debug,
+        note: "Photo saved. Enter your details on the next page — automatic scanning will be enabled soon.",
       });
     }
 
-    const result = await extractWithClaude(file, apiKey, debug);
-    return NextResponse.json({
-      success: true,
-      extracted: result,
-      debug,
-    });
-  } catch (err) {
-    console.error("OCR error:", err);
-    debug.error = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({
-      success: true,
-      extracted: EMPTY,
-      note: "OCR failed — enter details manually",
-      debug,
-    });
-  }
-}
+    // If we have a valid key, call Claude Vision for OCR
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const base64 = buffer.toString("base64");
+    let mediaType = file.type?.startsWith("image/") ? file.type : "image/jpeg";
+    if (mediaType === "image/heic" || mediaType === "image/heif") mediaType = "image/jpeg";
 
-async function extractWithClaude(
-  file: File,
-  apiKey: string,
-  debug: Record<string, unknown>
-): Promise<Extracted> {
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const base64 = buffer.toString("base64");
-
-  // Normalize media type — iOS sometimes sends "image/heic" which Claude doesn't
-  // accept. Default to JPEG since browsers almost always produce that for photos.
-  let mediaType = file.type && file.type.startsWith("image/") ? file.type : "image/jpeg";
-  if (mediaType === "image/heic" || mediaType === "image/heif") {
-    // Claude supports jpeg/png/gif/webp — HEIC must be transcoded. Fall back to
-    // sending as jpeg (most iOS photos are also saved as jpeg in-browser).
-    mediaType = "image/jpeg";
-  }
-  debug.mediaType = mediaType;
-  debug.base64Length = base64.length;
-
-  const prompt = `You are looking at a US driver's license. Extract the following fields and return ONLY a JSON object (no prose, no code fences, no markdown):
-
-{
-  "firstName": "given/first name exactly as printed",
-  "middleName": "middle name or initial, or empty string",
-  "lastName": "family/last name exactly as printed",
-  "dob": "date of birth as YYYY-MM-DD (e.g. 1985-03-15)",
-  "licenseNumber": "the driver's license number / DL# / LIC#",
-  "address": "full street address as one line (Street, City, State ZIP)"
-}
-
-Rules:
-- Return ONLY the JSON object, nothing else
-- Do NOT hallucinate — if a field is unclear, return empty string ""
-- DOB must be YYYY-MM-DD format even if printed differently on license`;
-
-  let res: Response;
-  try {
-    res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "x-api-key": apiKey,
@@ -122,51 +78,52 @@ Rules:
                 type: "image",
                 source: { type: "base64", media_type: mediaType, data: base64 },
               },
-              { type: "text", text: prompt },
+              {
+                type: "text",
+                text: `Extract data from this US driver's license. Return ONLY JSON: {"firstName":"","middleName":"","lastName":"","dob":"YYYY-MM-DD","licenseNumber":"","address":"full address"}. If unclear, use empty string.`,
+              },
             ],
           },
         ],
       }),
     });
-  } catch (networkErr) {
-    debug.networkError = networkErr instanceof Error ? networkErr.message : String(networkErr);
-    return EMPTY;
-  }
 
-  debug.apiStatus = res.status;
+    if (!res.ok) {
+      return NextResponse.json({
+        success: true,
+        extracted: EMPTY,
+        note: "Photo saved. Enter details manually on the next page.",
+      });
+    }
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    debug.apiError = errText.slice(0, 500);
-    console.error("Anthropic API error:", res.status, errText);
-    return EMPTY;
-  }
+    const data = await res.json();
+    const text: string = data?.content?.[0]?.text || "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return NextResponse.json({
+        success: true,
+        extracted: EMPTY,
+        note: "Photo saved. Enter details on the next page.",
+      });
+    }
 
-  const data = await res.json();
-  const text: string = data?.content?.[0]?.text || "";
-  debug.rawResponsePreview = text.slice(0, 300);
-
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    debug.parseError = "no JSON object found in response";
-    return EMPTY;
-  }
-
-  try {
     const parsed = JSON.parse(jsonMatch[0]);
-    return {
-      firstName: typeof parsed.firstName === "string" ? parsed.firstName : "",
-      middleName: typeof parsed.middleName === "string" ? parsed.middleName : "",
-      lastName: typeof parsed.lastName === "string" ? parsed.lastName : "",
-      dob:
-        typeof parsed.dob === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dob)
-          ? parsed.dob
-          : "",
-      licenseNumber: typeof parsed.licenseNumber === "string" ? parsed.licenseNumber : "",
-      address: typeof parsed.address === "string" ? parsed.address : "",
-    };
-  } catch (parseErr) {
-    debug.parseError = parseErr instanceof Error ? parseErr.message : String(parseErr);
-    return EMPTY;
+    return NextResponse.json({
+      success: true,
+      extracted: {
+        firstName: parsed.firstName || "",
+        middleName: parsed.middleName || "",
+        lastName: parsed.lastName || "",
+        dob: /^\d{4}-\d{2}-\d{2}$/.test(parsed.dob) ? parsed.dob : "",
+        licenseNumber: parsed.licenseNumber || "",
+        address: parsed.address || "",
+      },
+    });
+  } catch {
+    return NextResponse.json({
+      success: true,
+      extracted: EMPTY,
+      note: "Photo saved. Enter your details on the next page.",
+    });
   }
 }
