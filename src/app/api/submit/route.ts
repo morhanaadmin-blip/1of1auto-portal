@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { generateApplicationPDF } from "@/lib/pdf-generator";
 import type { ApplicationData } from "@/lib/types";
 
 // Initialize Supabase client with service role key
@@ -18,6 +19,16 @@ export async function POST(req: NextRequest) {
 
     const application: ApplicationData = JSON.parse(appJson);
 
+    // Generate application PDF
+    let pdfBuffer: Buffer | null = null;
+    try {
+      pdfBuffer = await generateApplicationPDF(application);
+      console.log(`Generated application PDF: ${pdfBuffer.length} bytes`);
+    } catch (err) {
+      console.error("Error generating PDF:", err);
+      // Continue without PDF if generation fails
+    }
+
     // Collect file metadata
     const files: { field: string; name: string; size: number; type: string }[] = [];
     const fileMap: { [key: string]: File } = {};
@@ -29,6 +40,12 @@ export async function POST(req: NextRequest) {
         console.log(`File attached: ${key} - ${value.name} (${value.size} bytes)`);
       }
     }
+
+    // Add PDF to files if generated
+    if (pdfBuffer) {
+      files.push({ field: "application_pdf", name: "application.pdf", size: pdfBuffer.byteLength, type: "application/pdf" });
+    }
+
     console.log(`Total files collected: ${files.length}`);
 
     // Basic validation
@@ -83,6 +100,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Upload application PDF
+    if (pdfBuffer) {
+      try {
+        const pdfPath = `${folderPath}/application.pdf`;
+        const { error } = await supabase.storage
+          .from("Applications")
+          .upload(pdfPath, pdfBuffer, { contentType: "application/pdf" });
+
+        if (error) {
+          console.error("Failed to upload application PDF:", error.message);
+        } else {
+          uploadedFiles["application_pdf"] = pdfPath;
+          console.log(`Uploaded application PDF to ${pdfPath}`);
+        }
+      } catch (err) {
+        console.error("Error uploading application PDF:", err);
+      }
+    }
+
     if (Object.keys(uploadErrors).length > 0) {
       console.error("Upload errors:", uploadErrors);
     }
@@ -108,6 +144,7 @@ export async function POST(req: NextRequest) {
             utility_bill_file_name: uploadedFiles["utility_bill"] || null,
             driver_license_photo_file_name: uploadedFiles["driver_license_photo"] || null,
             business_license_file_name: uploadedFiles["business_license"] || null,
+            application_pdf_file_name: uploadedFiles["application_pdf"] || null,
             submitted_at: new Date().toISOString(),
           },
         ])
