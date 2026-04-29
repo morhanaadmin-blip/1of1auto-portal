@@ -134,7 +134,6 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
           <div className="ml-0">
             <OptionalCheckbox
               label="I don't have current insurance"
-              helper="Check this if you're a first-time buyer or don't have an active policy"
               checked={data.documents.insuranceOptional}
               onChange={(checked) => {
                 updateDocs({ insuranceOptional: checked });
@@ -161,7 +160,6 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
           <div className="ml-0">
             <OptionalCheckbox
               label="I will NOT be transferring my current registration"
-              helper="Check this if: you're not transferring plates, switching brands, or don't have a current vehicle"
               checked={data.documents.registrationOptional}
               onChange={(checked) => {
                 updateDocs({ registrationOptional: checked });
