@@ -128,9 +128,9 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
         </p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         {/* Insurance Card */}
-        <div className="space-y-2">
+        <div className="space-y-3">
           <DocUploader
             label="Current auto insurance"
             description="Your insurance declaration page or card"
@@ -153,7 +153,7 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
         </div>
 
         {/* Registration */}
-        <div className="space-y-2">
+        <div className="space-y-3">
           <DocUploader
             label="Current registration"
             description="Registration for your current vehicle (for tag transfer)"
