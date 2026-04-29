@@ -50,7 +50,6 @@ function DocUploader({
       </div>
       <p className="text-xs text-muted mb-2">{description}</p>
       {file && <p className="text-xs text-accent truncate">{file.name}</p>}
-      {/* No capture attr — lets iOS/Android show both Camera and Library options */}
       <input
         type="file"
         accept="image/*,.pdf"
@@ -64,14 +63,50 @@ function DocUploader({
   );
 }
 
+function OptionalCheckbox({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <motion.label
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex items-center gap-3 p-3 rounded-lg border border-card-border hover:border-muted hover:bg-card/30 transition-all cursor-pointer"
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-4 h-4 rounded cursor-pointer"
+      />
+      <span className="text-sm">{label}</span>
+    </motion.label>
+  );
+}
+
 export default function PageDocuments({ data, updateDocs, onNext }: Props) {
   // Conditional requirements
   const needsUtilityBill = data.primary.registeringAddressSame === false;
   const needsBusinessLicense = data.mode === "business";
 
+  // Check if DL photo needs to be uploaded (scan was skipped)
+  const dlPhotoRequired =
+    data.primary.dlPhotoTracking?.skipped === true &&
+    !data.primary.licenseFile;
+
+  // Validation: document can be optional if checkbox is checked, otherwise required
+  const insuranceReq = !data.documents.insuranceOptional;
+  const registrationReq = !data.documents.registrationOptional;
+
   const canContinue =
-    !!data.documents.insurance &&
-    !!data.documents.registration &&
+    (!!data.documents.insurance || !insuranceReq) &&
+    (!!data.documents.registration || !registrationReq) &&
+    (!!data.documents.driverLicensePhoto || !dlPhotoRequired) &&
     (!needsUtilityBill || !!data.documents.utilityBill) &&
     (!needsBusinessLicense || !!data.documents.businessLicense);
 
@@ -84,23 +119,68 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
         </p>
       </div>
 
-      <div className="space-y-3">
-        <DocUploader
-          label="Current auto insurance"
-          description="Your insurance declaration page or card"
-          file={data.documents.insurance}
-          required={true}
-          onFile={(f) => updateDocs({ insurance: f })}
-        />
+      <div className="space-y-4">
+        {/* Insurance Card */}
+        <div className="space-y-2">
+          <DocUploader
+            label="Current auto insurance"
+            description="Your insurance declaration page or card"
+            file={data.documents.insurance}
+            required={insuranceReq}
+            onFile={(f) => updateDocs({ insurance: f })}
+          />
+          <OptionalCheckbox
+            label="I don't have current insurance"
+            checked={data.documents.insuranceOptional}
+            onChange={(checked) => {
+              updateDocs({ insuranceOptional: checked });
+              if (checked) {
+                // Clear the file if checked
+                updateDocs({ insurance: null });
+              }
+            }}
+          />
+        </div>
 
-        <DocUploader
-          label="Current registration"
-          description="Registration for your current vehicle (for tag transfer)"
-          file={data.documents.registration}
-          required={true}
-          onFile={(f) => updateDocs({ registration: f })}
-        />
+        {/* Registration */}
+        <div className="space-y-2">
+          <DocUploader
+            label="Current registration"
+            description="Registration for your current vehicle (for tag transfer)"
+            file={data.documents.registration}
+            required={registrationReq}
+            onFile={(f) => updateDocs({ registration: f })}
+          />
+          <OptionalCheckbox
+            label="I will NOT be transferring my current registration / I don't have one"
+            checked={data.documents.registrationOptional}
+            onChange={(checked) => {
+              updateDocs({ registrationOptional: checked });
+              if (checked) {
+                // Clear the file if checked
+                updateDocs({ registration: null });
+              }
+            }}
+          />
+        </div>
 
+        {/* Driver License Photo (conditional) */}
+        {dlPhotoRequired && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <DocUploader
+              label="Copy of driver's license"
+              description="Photo or scanned copy of the front of your driver's license"
+              file={data.documents.driverLicensePhoto}
+              required={true}
+              onFile={(f) => updateDocs({ driverLicensePhoto: f })}
+            />
+          </motion.div>
+        )}
+
+        {/* Utility Bill (conditional) */}
         {needsUtilityBill && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -116,6 +196,7 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
           </motion.div>
         )}
 
+        {/* Business License (conditional) */}
         {needsBusinessLicense && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}

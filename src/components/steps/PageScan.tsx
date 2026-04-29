@@ -25,7 +25,11 @@ export default function PageScan({ person, update, onNext, isCoApp }: Props) {
 
     // Preview
     const reader = new FileReader();
-    reader.onload = () => update({ licenseImage: reader.result as string, licenseFile: file });
+    reader.onload = () => update({
+      licenseImage: reader.result as string,
+      licenseFile: file,
+      dlPhotoTracking: { scanned: true, skipped: false } // mark scan as completed
+    });
     reader.readAsDataURL(file);
 
     // OCR
@@ -192,7 +196,16 @@ export default function PageScan({ person, update, onNext, isCoApp }: Props) {
       {error && <p className="text-xs text-error">{error}</p>}
 
       {/* Always show Continue button — scan is optional; user can proceed and enter manually */}
-      <ContinueButton onClick={onNext} disabled={scanning}>
+      <ContinueButton
+        onClick={() => {
+          // If skipping scan (no license image), mark it as skipped
+          if (!person.licenseImage) {
+            update({ dlPhotoTracking: { scanned: false, skipped: true } });
+          }
+          onNext();
+        }}
+        disabled={scanning}
+      >
         {person.licenseImage ? "Continue" : "Skip & enter manually"}
       </ContinueButton>
     </div>

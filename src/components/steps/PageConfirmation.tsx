@@ -42,7 +42,7 @@ export default function PageConfirmation({ data }: Props) {
         >
           <h1 className="text-3xl font-bold mb-2">You&apos;re in</h1>
           <p className="text-muted">
-            Thanks {data.primary.firstName}. Mor has your application and will review personally.
+            Thanks {data.primary.firstName}. A 1 OF 1 AUTO representative has your application and will review personally.
           </p>
         </motion.div>
 
@@ -62,7 +62,7 @@ export default function PageConfirmation({ data }: Props) {
           </div>
           <div className="flex justify-between">
             <span className="text-muted">Deposit</span>
-            <span className="text-accent font-semibold">$500 paid</span>
+            <span className="text-accent font-semibold">$99 paid</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted">Status</span>
@@ -78,13 +78,13 @@ export default function PageConfirmation({ data }: Props) {
         >
           <p className="text-sm text-muted">Questions before then?</p>
           <a
-            href="tel:+13477292958"
+            href="tel:+19547701177"
             className="inline-flex items-center gap-2 text-accent font-semibold hover:text-accent-dark"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
             </svg>
-            (347) 729-2958
+            (954) 770-1177
           </a>
         </motion.div>
       </motion.div>

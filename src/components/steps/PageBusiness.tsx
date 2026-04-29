@@ -1,6 +1,13 @@
 "use client";
 
-import { Field, ContinueButton } from "@/components/ui/Field";
+import { Field, Select, ContinueButton } from "@/components/ui/Field";
+
+const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "VA","WA","WV","WI","WY","DC",
+].map((s) => ({ value: s, label: s }));
 import DateOfBirth from "@/components/ui/DateOfBirth";
 import type { BusinessData } from "@/lib/types";
 
@@ -104,11 +111,11 @@ export default function PageBusiness({ business, update, onNext }: Props) {
             required
           />
         </div>
-        <Field
+        <Select
           label="State"
           value={business.state}
           onChange={(v) => update({ state: v })}
-          maxLength={2}
+          options={US_STATES}
           required
         />
       </div>
@@ -129,12 +136,11 @@ export default function PageBusiness({ business, update, onNext }: Props) {
         required
       />
 
-      <Field
+      <Select
         label="State of incorporation"
         value={business.stateOfIncorporation}
         onChange={(v) => update({ stateOfIncorporation: v })}
-        placeholder="FL"
-        maxLength={2}
+        options={US_STATES}
         required
       />
 

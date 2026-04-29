@@ -67,19 +67,38 @@ function ApplyFlow() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  // Pre-fill primary applicant from URL (CRM data Mor provides)
+  // Handle payment return from Stripe OR pre-fill from CRM URL params
   useEffect(() => {
-    setData((prev) => ({
-      ...prev,
-      primary: {
-        ...prev.primary,
-        firstName: searchParams.get("fn") || "",
-        middleName: searchParams.get("mn") || "",
-        lastName: searchParams.get("ln") || "",
-        email: searchParams.get("email") || "",
-        phone: searchParams.get("phone") || "",
-      },
-    }));
+    const paymentStatus = searchParams.get("payment");
+    if (paymentStatus === "success" || paymentStatus === "cancel") {
+      // Restore saved application state after Stripe redirect
+      const saved = sessionStorage.getItem("1of1_app_data");
+      if (saved) {
+        try {
+          const savedData = JSON.parse(saved);
+          setData(
+            paymentStatus === "success"
+              ? { ...savedData, depositPaid: true, stripeSessionId: "stripe_verified" }
+              : savedData
+          );
+          sessionStorage.removeItem("1of1_app_data");
+        } catch {}
+      }
+      setStep("deposit");
+    } else {
+      // Pre-fill primary applicant from URL (CRM data Mor provides)
+      setData((prev) => ({
+        ...prev,
+        primary: {
+          ...prev.primary,
+          firstName: searchParams.get("fn") || "",
+          middleName: searchParams.get("mn") || "",
+          lastName: searchParams.get("ln") || "",
+          email: searchParams.get("email") || "",
+          phone: searchParams.get("phone") || "",
+        },
+      }));
+    }
   }, [searchParams]);
 
   const updatePrimary = (fields: Partial<PersonData>) => {
@@ -173,15 +192,6 @@ function ApplyFlow() {
         setStep("documents");
         break;
       case "business-info":
-        setStep("housing-business");
-        break;
-      case "housing-business":
-        setStep("income-business");
-        break;
-      case "income-business":
-        setStep("employment-business");
-        break;
-      case "employment-business":
         setStep("documents");
         break;
       case "documents":
@@ -214,7 +224,7 @@ function ApplyFlow() {
       case "employment-business": setStep("income-business"); break;
       case "documents":
         if (data.mode === "co-applicant") setStep("employment-coapp");
-        else if (data.mode === "business") setStep("employment-business");
+        else if (data.mode === "business") setStep("business-info");
         else setStep("co-or-business");
         break;
       case "agreement": setStep("documents"); break;
@@ -229,10 +239,11 @@ function ApplyFlow() {
       const formData = new FormData();
       formData.append("application", JSON.stringify({
         ...data,
-        primary: { ...data.primary, licenseFile: null, licenseImage: null },
+        primary: { ...data.primary, licenseFile: null, licenseImage: null, dlPhotoTracking: null },
         coApplicant: data.coApplicant
-          ? { ...data.coApplicant, licenseFile: null, licenseImage: null }
+          ? { ...data.coApplicant, licenseFile: null, licenseImage: null, dlPhotoTracking: null }
           : null,
+        documents: { ...data.documents, driverLicensePhoto: null },
       }));
 
       if (data.primary.licenseFile) formData.append("primary_license", data.primary.licenseFile);
@@ -240,6 +251,7 @@ function ApplyFlow() {
       if (data.documents.insurance) formData.append("insurance", data.documents.insurance);
       if (data.documents.registration) formData.append("registration", data.documents.registration);
       if (data.documents.utilityBill) formData.append("utility_bill", data.documents.utilityBill);
+      if (data.documents.driverLicensePhoto) formData.append("driver_license_photo", data.documents.driverLicensePhoto);
       if (data.documents.businessLicense) formData.append("business_license", data.documents.businessLicense);
 
       const res = await fetch("/api/submit", { method: "POST", body: formData });

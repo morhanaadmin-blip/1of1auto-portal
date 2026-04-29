@@ -28,11 +28,16 @@ export default function PageDepositSubmit({ data, setData, submit, submitting }:
           name: `${data.primary.firstName} ${data.primary.lastName}`,
         }),
       });
-      const { url } = await res.json();
-      if (url) {
-        window.location.href = url;
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Payment setup failed");
+      }
+      if (json.url) {
+        // Save application state before leaving the page
+        sessionStorage.setItem("1of1_app_data", JSON.stringify(data));
+        window.location.href = json.url;
       } else {
-        // Dev mode
+        // Dev mode: Stripe not configured
         setData((prev) => ({ ...prev, depositPaid: true, stripeSessionId: "dev_test" }));
       }
     } catch (err) {
@@ -57,7 +62,7 @@ export default function PageDepositSubmit({ data, setData, submit, submitting }:
         >
           <div className="flex justify-between items-baseline">
             <span className="text-muted text-sm">Service Commitment Fee</span>
-            <span className="text-3xl font-bold">$500</span>
+            <span className="text-3xl font-bold">$99</span>
           </div>
           <ul className="text-xs text-muted space-y-1.5">
             <li>— Applied toward broker service</li>
@@ -70,7 +75,7 @@ export default function PageDepositSubmit({ data, setData, submit, submitting }:
             disabled={processing}
             className="w-full py-3.5 rounded-xl bg-accent text-black font-semibold hover:bg-accent-dark transition-all active:scale-[0.98] disabled:opacity-40"
           >
-            {processing ? "Setting up secure payment..." : "Pay $500 securely"}
+            {processing ? "Setting up secure payment..." : "Pay $99 securely"}
           </button>
           {paymentError && (
             <p className="text-xs text-error">{paymentError}</p>
@@ -93,7 +98,7 @@ export default function PageDepositSubmit({ data, setData, submit, submitting }:
             </div>
             <div>
               <p className="font-semibold">Deposit received</p>
-              <p className="text-xs text-muted">$500 applied to your engagement</p>
+              <p className="text-xs text-muted">$99 applied to your engagement</p>
             </div>
           </motion.div>
 

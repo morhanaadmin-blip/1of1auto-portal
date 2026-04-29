@@ -7,6 +7,7 @@ export type PersonData = {
   // From DL OCR
   licenseFile: File | null;
   licenseImage: string | null; // data URL for preview
+  dlPhotoTracking: { scanned: boolean; skipped: boolean } | null; // track if scan was attempted or skipped
   firstName: string;
   middleName: string;
   lastName: string;
@@ -65,14 +66,42 @@ export type BusinessData = {
 
 export type DocumentData = {
   insurance: File | null;
+  insuranceOptional: boolean; // checkbox: "I don't have current insurance"
   registration: File | null;
+  registrationOptional: boolean; // checkbox: "I will NOT be transferring my current registration"
   utilityBill: File | null; // if DL address ≠ registering address
+  driverLicensePhoto: File | null; // mandatory: uploaded if scan was skipped
   businessLicense: File | null; // if business application
 };
 
 export type AgreementData = {
   signatureData: string;
   agreed: boolean;
+};
+
+export type ApplicationStatus = "submitted" | "review_pending" | "approved" | "denied" | "needs_info";
+
+export type ApplicationRecord = {
+  id: string;
+  stripe_session_id: string;
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string;
+  application_mode: ApplicationMode;
+  status: ApplicationStatus;
+  drive_folder_id: string | null;
+  application_json: ApplicationData;
+  primary_license_file_name: string | null;
+  co_applicant_license_file_name: string | null;
+  insurance_file_name: string | null;
+  registration_file_name: string | null;
+  utility_bill_file_name: string | null;
+  driver_license_photo_file_name: string | null;
+  business_license_file_name: string | null;
+  created_at: string;
+  updated_at: string;
+  submitted_at: string | null;
+  notes: string | null;
 };
 
 export type ApplicationData = {
@@ -89,6 +118,7 @@ export type ApplicationData = {
 export const emptyPerson = (): PersonData => ({
   licenseFile: null,
   licenseImage: null,
+  dlPhotoTracking: null,
   firstName: "",
   middleName: "",
   lastName: "",
@@ -141,8 +171,11 @@ export const emptyBusiness = (): BusinessData => ({
 
 export const emptyDocuments = (): DocumentData => ({
   insurance: null,
+  insuranceOptional: false,
   registration: null,
+  registrationOptional: false,
   utilityBill: null,
+  driverLicensePhoto: null,
   businessLicense: null,
 });
 

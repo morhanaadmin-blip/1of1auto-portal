@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import type { ApplicationData } from "@/lib/types";
+
+// Initialize Supabase client with service role key
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+);
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,12 +20,16 @@ export async function POST(req: NextRequest) {
 
     // Collect file metadata
     const files: { field: string; name: string; size: number; type: string }[] = [];
+    const fileMap: { [key: string]: File } = {};
+
     for (const [key, value] of formData.entries()) {
       if (value instanceof File) {
         files.push({ field: key, name: value.name, size: value.size, type: value.type });
-        // TODO: Upload to Supabase Storage when configured
+        fileMap[key] = value;
+        console.log(`File attached: ${key} - ${value.name} (${value.size} bytes)`);
       }
     }
+    console.log(`Total files collected: ${files.length}`);
 
     // Basic validation
     const p = application.primary;
@@ -38,11 +49,75 @@ export async function POST(req: NextRequest) {
       deposit: application.depositPaid,
     });
 
-    // Send Telegram notification to Mor
-    await sendTelegramNotification(application, files);
+    // Create storage folder for this customer
+    const customerName = `${p.firstName} ${p.lastName}`;
+    const folderPath = `${customerName}/${Date.now()}`;
 
-    // TODO: Save to Supabase when configured
-    return NextResponse.json({ success: true, id: Date.now().toString() });
+    // Upload files to Supabase Storage
+    const uploadedFiles: { [key: string]: string } = {};
+    for (const [key, file] of Object.entries(fileMap)) {
+      try {
+        const fileName = `${key}-${file.name}`;
+        const filePath = `${folderPath}/${fileName}`;
+
+        const { error } = await supabase.storage
+          .from("applications")
+          .upload(filePath, file);
+
+        if (error) {
+          console.error(`Failed to upload ${key}:`, error);
+        } else {
+          uploadedFiles[key] = filePath;
+          console.log(`Uploaded ${key} to ${filePath}`);
+        }
+      } catch (err) {
+        console.error(`Error uploading ${key}:`, err);
+      }
+    }
+
+    // Save application record to database
+    try {
+      const { data, error } = await supabase
+        .from("applications")
+        .insert([
+          {
+            stripe_session_id: application.stripeSessionId,
+            customer_name: customerName,
+            customer_email: p.email,
+            customer_phone: p.phone,
+            application_mode: application.mode,
+            status: "submitted",
+            storage_folder_path: folderPath,
+            application_json: application,
+            primary_license_file_name: uploadedFiles["primary_license"] || null,
+            co_applicant_license_file_name: uploadedFiles["coapp_license"] || null,
+            insurance_file_name: uploadedFiles["insurance"] || null,
+            registration_file_name: uploadedFiles["registration"] || null,
+            utility_bill_file_name: uploadedFiles["utility_bill"] || null,
+            driver_license_photo_file_name: uploadedFiles["driver_license_photo"] || null,
+            business_license_file_name: uploadedFiles["business_license"] || null,
+            submitted_at: new Date().toISOString(),
+          },
+        ])
+        .select();
+
+      if (error) {
+        console.error("Failed to save application to database:", error);
+      } else {
+        console.log("Application saved to database:", data);
+      }
+    } catch (err) {
+      console.error("Error saving to database:", err);
+    }
+
+    // Send Telegram notification to Mor
+    await sendTelegramNotification(application, files, folderPath);
+
+    return NextResponse.json({
+      success: true,
+      id: Date.now().toString(),
+      storagePath: folderPath,
+    });
   } catch (err) {
     console.error("Submit error:", err);
     return NextResponse.json(
@@ -54,7 +129,8 @@ export async function POST(req: NextRequest) {
 
 async function sendTelegramNotification(
   app: ApplicationData,
-  files: { field: string; name: string }[]
+  files: { field: string; name: string }[],
+  storagePath: string
 ) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -98,7 +174,9 @@ async function sendTelegramNotification(
 
   lines.push(``, `📎 Docs: ${files.length} files uploaded`);
   lines.push(`✍️ Agreement: ${app.agreement.agreed ? "Signed" : "Not signed"}`);
-  lines.push(`💳 Deposit: ${app.depositPaid ? "$500 paid" : "Pending"}`);
+  lines.push(`💳 Deposit: ${app.depositPaid ? "$99 paid" : "Pending"}`);
+  lines.push(`📁 Storage: \`${storagePath}\``);
+  lines.push(``, `📞 Contact: 1 OF 1 AUTO Representative · 954-770-1177`);
 
   try {
     await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {

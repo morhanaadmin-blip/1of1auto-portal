@@ -81,7 +81,7 @@ export default function PageAgreement({ agreement, update, onNext }: Props) {
           <strong className="text-foreground">Your broker</strong> — 1 OF 1 AUTO INC. is helping you find, negotiate, and finalize your vehicle. We&apos;re not a dealer; we work directly with dealers on your behalf to get you better terms than you&apos;d find on your own.
         </p>
         <p>
-          <strong className="text-foreground">The deposit</strong> — A $500 Service Commitment Fee is due when you sign. This is applied toward what you&apos;d pay for the service. It&apos;s refundable if we can&apos;t complete the deal on our side, and non-refundable if you decide to shop elsewhere after we&apos;ve done the work.
+          <strong className="text-foreground">The deposit</strong> — A $99 Service Commitment Fee is due when you sign. This is applied toward what you&apos;d pay for the service. It&apos;s refundable if we can&apos;t complete the deal on our side, and non-refundable if you decide to shop elsewhere after we&apos;ve done the work.
         </p>
         <p>
           <strong className="text-foreground">Working together</strong> — While we&apos;re working on your deal, please let us handle dealer communications. Reaching out directly to dealers we&apos;ve introduced can disrupt the deal structure. If something feels off, just call us first.
