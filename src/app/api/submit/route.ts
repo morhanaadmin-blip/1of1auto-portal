@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
         const filePath = `${folderPath}/${fileName}`;
 
         const { error } = await supabase.storage
-          .from("applications")
+          .from("Applications")
           .upload(filePath, file);
 
         if (error) {
