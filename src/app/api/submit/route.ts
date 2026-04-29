@@ -49,8 +49,10 @@ export async function POST(req: NextRequest) {
       deposit: application.depositPaid,
     });
 
-    // Create storage folder for this customer
-    const customerName = `${p.firstName} ${p.lastName}`;
+    // Create storage folder for this customer (sanitize for Supabase Storage)
+    const sanitizePath = (str: string) =>
+      str.toLowerCase().replace(/[^a-z0-9.-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    const customerName = sanitizePath(`${p.firstName} ${p.lastName}`);
     const folderPath = `${customerName}/${Date.now()}`;
 
     // Upload files to Supabase Storage
@@ -58,7 +60,8 @@ export async function POST(req: NextRequest) {
     const uploadErrors: { [key: string]: string } = {};
     for (const [key, file] of Object.entries(fileMap)) {
       try {
-        const fileName = `${key}-${file.name}`;
+        const sanitizedFileName = sanitizePath(file.name);
+        const fileName = `${key}-${sanitizedFileName}`;
         const filePath = `${folderPath}/${fileName}`;
 
         const { error } = await supabase.storage
