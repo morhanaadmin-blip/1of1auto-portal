@@ -67,29 +67,24 @@ function OptionalCheckbox({
   label,
   checked,
   onChange,
-  helper,
 }: {
   label: string;
   checked: boolean;
   onChange: (value: boolean) => void;
-  helper?: string;
 }) {
   return (
     <motion.label
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-start gap-3 p-3 cursor-pointer"
+      className="flex items-center gap-2 cursor-pointer text-sm"
     >
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-5 h-5 rounded cursor-pointer mt-1 flex-shrink-0 accent-accent"
+        className="w-4 h-4 rounded cursor-pointer flex-shrink-0 accent-accent"
       />
-      <div className="flex flex-col gap-1 pt-0.5">
-        <span className="text-sm font-medium text-foreground">{label}</span>
-        {helper && <p className="text-xs text-muted leading-relaxed">{helper}</p>}
-      </div>
+      <span className="text-foreground">{label}</span>
     </motion.label>
   );
 }
