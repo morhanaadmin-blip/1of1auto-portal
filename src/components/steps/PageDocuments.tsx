@@ -128,51 +128,59 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
         </p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-8">
         {/* Insurance Card */}
-        <div className="space-y-3">
-          <DocUploader
-            label="Current auto insurance"
-            description="Your insurance declaration page or card"
-            file={data.documents.insurance}
-            required={insuranceReq}
-            onFile={(f) => updateDocs({ insurance: f })}
-          />
-          <OptionalCheckbox
-            label="I don't have current insurance"
-            helper="Check this if you're a first-time buyer or don't have an active policy"
-            checked={data.documents.insuranceOptional}
-            onChange={(checked) => {
-              updateDocs({ insuranceOptional: checked });
-              if (checked) {
-                // Clear the file if checked
-                updateDocs({ insurance: null });
-              }
-            }}
-          />
+        <div>
+          <div className="mb-4">
+            <DocUploader
+              label="Current auto insurance"
+              description="Your insurance declaration page or card"
+              file={data.documents.insurance}
+              required={insuranceReq}
+              onFile={(f) => updateDocs({ insurance: f })}
+            />
+          </div>
+          <div className="ml-0">
+            <OptionalCheckbox
+              label="I don't have current insurance"
+              helper="Check this if you're a first-time buyer or don't have an active policy"
+              checked={data.documents.insuranceOptional}
+              onChange={(checked) => {
+                updateDocs({ insuranceOptional: checked });
+                if (checked) {
+                  // Clear the file if checked
+                  updateDocs({ insurance: null });
+                }
+              }}
+            />
+          </div>
         </div>
 
         {/* Registration */}
-        <div className="space-y-3">
-          <DocUploader
-            label="Current registration"
-            description="Registration for your current vehicle (for tag transfer)"
-            file={data.documents.registration}
-            required={registrationReq}
-            onFile={(f) => updateDocs({ registration: f })}
-          />
-          <OptionalCheckbox
-            label="I will NOT be transferring my current registration"
-            helper="Check this if: you're not transferring plates, switching brands, or don't have a current vehicle"
-            checked={data.documents.registrationOptional}
-            onChange={(checked) => {
-              updateDocs({ registrationOptional: checked });
-              if (checked) {
-                // Clear the file if checked
-                updateDocs({ registration: null });
-              }
-            }}
-          />
+        <div>
+          <div className="mb-4">
+            <DocUploader
+              label="Current registration"
+              description="Registration for your current vehicle (for tag transfer)"
+              file={data.documents.registration}
+              required={registrationReq}
+              onFile={(f) => updateDocs({ registration: f })}
+            />
+          </div>
+          <div className="ml-0">
+            <OptionalCheckbox
+              label="I will NOT be transferring my current registration"
+              helper="Check this if: you're not transferring plates, switching brands, or don't have a current vehicle"
+              checked={data.documents.registrationOptional}
+              onChange={(checked) => {
+                updateDocs({ registrationOptional: checked });
+                if (checked) {
+                  // Clear the file if checked
+                  updateDocs({ registration: null });
+                }
+              }}
+            />
+          </div>
         </div>
 
         {/* Driver License Photo (conditional) */}
