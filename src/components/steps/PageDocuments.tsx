@@ -76,15 +76,15 @@ function OptionalCheckbox({
     <motion.label
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-center gap-2 cursor-pointer text-sm"
+      className="flex gap-2 cursor-pointer text-sm w-full"
     >
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4 rounded cursor-pointer flex-shrink-0 accent-accent"
+        className="w-4 h-4 rounded cursor-pointer flex-shrink-0 accent-accent mt-0.5"
       />
-      <span className="text-foreground">{label}</span>
+      <span className="text-foreground break-words">{label}</span>
     </motion.label>
   );
 }
@@ -119,26 +119,23 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
         </p>
       </div>
 
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* Insurance Card */}
-        <div>
-          <div className="mb-4">
-            <DocUploader
-              label="Current auto insurance"
-              description="Your insurance declaration page or card"
-              file={data.documents.insurance}
-              required={insuranceReq}
-              onFile={(f) => updateDocs({ insurance: f })}
-            />
-          </div>
-          <div className="ml-0">
+        <div className="w-full">
+          <DocUploader
+            label="Current auto insurance"
+            description="Your insurance declaration page or card"
+            file={data.documents.insurance}
+            required={insuranceReq}
+            onFile={(f) => updateDocs({ insurance: f })}
+          />
+          <div className="mt-2 px-0">
             <OptionalCheckbox
               label="I don't have current insurance"
               checked={data.documents.insuranceOptional}
               onChange={(checked) => {
                 updateDocs({ insuranceOptional: checked });
                 if (checked) {
-                  // Clear the file if checked
                   updateDocs({ insurance: null });
                 }
               }}
@@ -147,24 +144,21 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
         </div>
 
         {/* Registration */}
-        <div>
-          <div className="mb-4">
-            <DocUploader
-              label="Current registration"
-              description="Registration for your current vehicle (for tag transfer)"
-              file={data.documents.registration}
-              required={registrationReq}
-              onFile={(f) => updateDocs({ registration: f })}
-            />
-          </div>
-          <div className="ml-0">
+        <div className="w-full">
+          <DocUploader
+            label="Current registration"
+            description="Registration for your current vehicle (for tag transfer)"
+            file={data.documents.registration}
+            required={registrationReq}
+            onFile={(f) => updateDocs({ registration: f })}
+          />
+          <div className="mt-2 px-0">
             <OptionalCheckbox
               label="I will NOT be transferring my current registration"
               checked={data.documents.registrationOptional}
               onChange={(checked) => {
                 updateDocs({ registrationOptional: checked });
                 if (checked) {
-                  // Clear the file if checked
                   updateDocs({ registration: null });
                 }
               }}
