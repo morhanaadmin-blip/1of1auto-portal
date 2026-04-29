@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
 
     // Upload files to Supabase Storage
     const uploadedFiles: { [key: string]: string } = {};
+    const uploadErrors: { [key: string]: string } = {};
     for (const [key, file] of Object.entries(fileMap)) {
       try {
         const fileName = `${key}-${file.name}`;
@@ -65,14 +66,22 @@ export async function POST(req: NextRequest) {
           .upload(filePath, file);
 
         if (error) {
-          console.error(`Failed to upload ${key}:`, error);
+          const errorMsg = `Failed to upload ${key}: ${error.message}`;
+          console.error(errorMsg);
+          uploadErrors[key] = error.message;
         } else {
           uploadedFiles[key] = filePath;
           console.log(`Uploaded ${key} to ${filePath}`);
         }
       } catch (err) {
-        console.error(`Error uploading ${key}:`, err);
+        const errorMsg = `Error uploading ${key}: ${err instanceof Error ? err.message : String(err)}`;
+        console.error(errorMsg);
+        uploadErrors[key] = errorMsg;
       }
+    }
+
+    if (Object.keys(uploadErrors).length > 0) {
+      console.error("Upload errors:", uploadErrors);
     }
 
     // Save application record to database
@@ -117,6 +126,8 @@ export async function POST(req: NextRequest) {
       success: true,
       id: Date.now().toString(),
       storagePath: folderPath,
+      uploadErrors: Object.keys(uploadErrors).length > 0 ? uploadErrors : null,
+      filesUploaded: Object.keys(uploadedFiles).length,
     });
   } catch (err) {
     console.error("Submit error:", err);
