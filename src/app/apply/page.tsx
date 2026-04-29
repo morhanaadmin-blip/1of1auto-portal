@@ -255,8 +255,17 @@ function ApplyFlow() {
       if (data.documents.businessLicense) formData.append("business_license", data.documents.businessLicense);
 
       const res = await fetch("/api/submit", { method: "POST", body: formData });
+      const body = await res.json();
+
+      // Check for upload errors even if submission was "successful"
+      if (body.uploadErrors && Object.keys(body.uploadErrors).length > 0) {
+        const errorList = Object.entries(body.uploadErrors)
+          .map(([file, err]) => `${file}: ${err}`)
+          .join("\n");
+        throw new Error(`File upload failed:\n${errorList}`);
+      }
+
       if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: "Submission failed" }));
         throw new Error(body.error || "Submission failed");
       }
       next();
