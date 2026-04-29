@@ -67,24 +67,33 @@ function OptionalCheckbox({
   label,
   checked,
   onChange,
+  helper,
 }: {
   label: string;
   checked: boolean;
   onChange: (value: boolean) => void;
+  helper?: string;
 }) {
   return (
     <motion.label
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-center gap-3 p-3 rounded-lg border border-card-border hover:border-muted hover:bg-card/30 transition-all cursor-pointer"
+      className={`flex items-start gap-3 p-4 rounded-lg border-2 transition-all cursor-pointer ${
+        checked
+          ? "border-accent bg-accent/5"
+          : "border-card-border hover:border-muted hover:bg-card/30"
+      }`}
     >
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4 rounded cursor-pointer"
+        className="w-5 h-5 rounded cursor-pointer mt-0.5 flex-shrink-0"
       />
-      <span className="text-sm">{label}</span>
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-medium">{label}</span>
+        {helper && <p className="text-xs text-muted">{helper}</p>}
+      </div>
     </motion.label>
   );
 }
@@ -131,6 +140,7 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
           />
           <OptionalCheckbox
             label="I don't have current insurance"
+            helper="Check this if you're a first-time buyer or don't have an active policy"
             checked={data.documents.insuranceOptional}
             onChange={(checked) => {
               updateDocs({ insuranceOptional: checked });
@@ -152,7 +162,8 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
             onFile={(f) => updateDocs({ registration: f })}
           />
           <OptionalCheckbox
-            label="I will NOT be transferring my current registration / I don't have one"
+            label="I will NOT be transferring my current registration"
+            helper="Check this if: you're not transferring plates, switching brands, or don't have a current vehicle"
             checked={data.documents.registrationOptional}
             onChange={(checked) => {
               updateDocs({ registrationOptional: checked });
