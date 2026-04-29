@@ -114,12 +114,16 @@ export async function POST(req: NextRequest) {
         .select();
 
       if (error) {
-        console.error("Failed to save application to database:", error);
+        const errorMsg = `Database error: ${error.message || JSON.stringify(error)}`;
+        console.error("Failed to save application to database:", errorMsg);
+        throw new Error(errorMsg);
       } else {
         console.log("Application saved to database:", data);
       }
     } catch (err) {
-      console.error("Error saving to database:", err);
+      const errorMsg = `Error saving to database: ${err instanceof Error ? err.message : String(err)}`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
 
     // Send Telegram notification to Mor
@@ -133,9 +137,10 @@ export async function POST(req: NextRequest) {
       filesUploaded: Object.keys(uploadedFiles).length,
     });
   } catch (err) {
-    console.error("Submit error:", err);
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("Submit error:", errorMsg);
     return NextResponse.json(
-      { error: "Failed to process application" },
+      { error: errorMsg },
       { status: 500 }
     );
   }
