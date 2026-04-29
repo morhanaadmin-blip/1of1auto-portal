@@ -76,15 +76,15 @@ function OptionalCheckbox({
     <motion.label
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex gap-2 cursor-pointer text-sm w-full"
+      className="flex flex-wrap gap-2 cursor-pointer text-sm w-full items-start"
     >
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4 rounded cursor-pointer flex-shrink-0 accent-accent mt-0.5"
+        className="w-4 h-4 rounded cursor-pointer flex-shrink-0 accent-accent mt-1"
       />
-      <span className="text-foreground break-words">{label}</span>
+      <span className="text-foreground flex-1 break-words min-w-0">{label}</span>
     </motion.label>
   );
 }
