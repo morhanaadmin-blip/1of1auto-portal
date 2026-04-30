@@ -23,6 +23,15 @@ export async function POST(req: NextRequest) {
 
     const application: ApplicationData = JSON.parse(appJson);
 
+    // Basic validation & extract primary applicant
+    const p = application.primary;
+    if (!p.firstName || !p.lastName || !p.email || !p.phone) {
+      return NextResponse.json(
+        { error: "Missing required primary applicant fields" },
+        { status: 400 }
+      );
+    }
+
     // Generate PDFs
     let applicationPdfBuffer: Buffer | null = null;
     let agreementPdfBuffer: Buffer | null = null;
@@ -86,15 +95,6 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`Total files collected: ${files.length}`);
-
-    // Basic validation
-    const p = application.primary;
-    if (!p.firstName || !p.lastName || !p.email || !p.phone) {
-      return NextResponse.json(
-        { error: "Missing required primary applicant fields" },
-        { status: 400 }
-      );
-    }
 
     console.log("Application received:", {
       applicant: `${p.firstName} ${p.lastName}`,

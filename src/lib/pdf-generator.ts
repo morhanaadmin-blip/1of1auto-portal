@@ -60,7 +60,7 @@ By signing below, the Applicant confirms they have read and understand all terms
         );
         doc.image(buffer, { width: 200, height: 80 });
       } catch {
-        doc.text("[Signature not available]", { color: "#999999" });
+        doc.text("[Signature not available]");
       }
     }
 
@@ -126,7 +126,7 @@ export async function generateChargeConfirmationPDF(
 
     // Footer
     doc.fontSize(7).text("1 OF 1 AUTO • 954-770-1177 • www.1of1auto.com", { align: "center" });
-    doc.text("This is an automatic confirmation. No action is required.", { align: "center", color: "#999999" });
+    doc.text("This is an automatic confirmation. No action is required.", { align: "center" });
 
     doc.end();
   });
