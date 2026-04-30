@@ -21,7 +21,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing application data" }, { status: 400 });
     }
 
-    const application: ApplicationData = JSON.parse(appJson);
+    let application: ApplicationData = JSON.parse(appJson);
+
+    // Sanitize input: remove formatting from phone, EIN, etc.
+    const sanitizePhoneNumber = (phone: string) => phone.replace(/\D/g, "");
+    const sanitizeEIN = (ein: string) => ein.replace(/\D/g, "");
+
+    // Apply sanitization to primary applicant
+    application.primary = {
+      ...application.primary,
+      phone: sanitizePhoneNumber(application.primary.phone),
+    };
+
+    // Apply sanitization to co-applicant if present
+    if (application.coApplicant) {
+      application.coApplicant = {
+        ...application.coApplicant,
+        phone: sanitizePhoneNumber(application.coApplicant.phone),
+      };
+    }
+
+    // Apply sanitization to business if present
+    if (application.business) {
+      application.business = {
+        ...application.business,
+        ein: sanitizeEIN(application.business.ein),
+      };
+    }
 
     // Basic validation & extract primary applicant
     const p = application.primary;
