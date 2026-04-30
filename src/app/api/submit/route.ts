@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { generateApplicationPDF } from "@/lib/pdf-generator";
+import {
+  generateApplicationPDF,
+  generateAgreementPDF,
+  generateChargeConfirmationPDF,
+} from "@/lib/pdf-generator";
 import type { ApplicationData } from "@/lib/types";
 
 // Initialize Supabase client with service role key
@@ -19,14 +23,43 @@ export async function POST(req: NextRequest) {
 
     const application: ApplicationData = JSON.parse(appJson);
 
-    // Generate application PDF
-    let pdfBuffer: Buffer | null = null;
+    // Generate PDFs
+    let applicationPdfBuffer: Buffer | null = null;
+    let agreementPdfBuffer: Buffer | null = null;
+    let chargePdfBuffer: Buffer | null = null;
+
     try {
-      pdfBuffer = await generateApplicationPDF(application);
-      console.log(`Generated application PDF: ${pdfBuffer.length} bytes`);
+      applicationPdfBuffer = await generateApplicationPDF(application);
+      console.log(`Generated application PDF: ${applicationPdfBuffer.length} bytes`);
     } catch (err) {
-      console.error("Error generating PDF:", err);
-      // Continue without PDF if generation fails
+      console.error("Error generating application PDF:", err);
+    }
+
+    try {
+      if (application.agreement.signatureData) {
+        agreementPdfBuffer = await generateAgreementPDF(
+          `${p.firstName} ${p.lastName}`,
+          application.agreement.signatureData
+        );
+        console.log(`Generated agreement PDF: ${agreementPdfBuffer.length} bytes`);
+      }
+    } catch (err) {
+      console.error("Error generating agreement PDF:", err);
+    }
+
+    try {
+      if (application.depositPaid) {
+        chargePdfBuffer = await generateChargeConfirmationPDF(
+          `${p.firstName} ${p.lastName}`,
+          p.email,
+          99, // $99 deposit
+          application.stripeSessionId || "unknown",
+          "****" // Card last 4 not available in this context
+        );
+        console.log(`Generated charge confirmation PDF: ${chargePdfBuffer.length} bytes`);
+      }
+    } catch (err) {
+      console.error("Error generating charge confirmation PDF:", err);
     }
 
     // Collect file metadata
@@ -41,9 +74,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Add PDF to files if generated
-    if (pdfBuffer) {
-      files.push({ field: "application_pdf", name: "application.pdf", size: pdfBuffer.byteLength, type: "application/pdf" });
+    // Add PDFs to files if generated
+    if (applicationPdfBuffer) {
+      files.push({ field: "application_pdf", name: "application.pdf", size: applicationPdfBuffer.byteLength, type: "application/pdf" });
+    }
+    if (agreementPdfBuffer) {
+      files.push({ field: "agreement_pdf", name: "agreement-signed.pdf", size: agreementPdfBuffer.byteLength, type: "application/pdf" });
+    }
+    if (chargePdfBuffer) {
+      files.push({ field: "charge_pdf", name: "payment-confirmation.pdf", size: chargePdfBuffer.byteLength, type: "application/pdf" });
     }
 
     console.log(`Total files collected: ${files.length}`);
@@ -100,13 +139,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Upload application PDF
-    if (pdfBuffer) {
+    // Upload generated PDFs
+    if (applicationPdfBuffer) {
       try {
         const pdfPath = `${folderPath}/application.pdf`;
         const { error } = await supabase.storage
           .from("Applications")
-          .upload(pdfPath, pdfBuffer, { contentType: "application/pdf" });
+          .upload(pdfPath, applicationPdfBuffer, { contentType: "application/pdf" });
 
         if (error) {
           console.error("Failed to upload application PDF:", error.message);
@@ -116,6 +155,42 @@ export async function POST(req: NextRequest) {
         }
       } catch (err) {
         console.error("Error uploading application PDF:", err);
+      }
+    }
+
+    if (agreementPdfBuffer) {
+      try {
+        const pdfPath = `${folderPath}/agreement-signed.pdf`;
+        const { error } = await supabase.storage
+          .from("Applications")
+          .upload(pdfPath, agreementPdfBuffer, { contentType: "application/pdf" });
+
+        if (error) {
+          console.error("Failed to upload agreement PDF:", error.message);
+        } else {
+          uploadedFiles["agreement_pdf"] = pdfPath;
+          console.log(`Uploaded agreement PDF to ${pdfPath}`);
+        }
+      } catch (err) {
+        console.error("Error uploading agreement PDF:", err);
+      }
+    }
+
+    if (chargePdfBuffer) {
+      try {
+        const pdfPath = `${folderPath}/payment-confirmation.pdf`;
+        const { error } = await supabase.storage
+          .from("Applications")
+          .upload(pdfPath, chargePdfBuffer, { contentType: "application/pdf" });
+
+        if (error) {
+          console.error("Failed to upload charge confirmation PDF:", error.message);
+        } else {
+          uploadedFiles["charge_pdf"] = pdfPath;
+          console.log(`Uploaded charge confirmation PDF to ${pdfPath}`);
+        }
+      } catch (err) {
+        console.error("Error uploading charge confirmation PDF:", err);
       }
     }
 
@@ -145,6 +220,8 @@ export async function POST(req: NextRequest) {
             driver_license_photo_file_name: uploadedFiles["driver_license_photo"] || null,
             business_license_file_name: uploadedFiles["business_license"] || null,
             application_pdf_file_name: uploadedFiles["application_pdf"] || null,
+            agreement_pdf_file_name: uploadedFiles["agreement_pdf"] || null,
+            charge_confirmation_pdf_file_name: uploadedFiles["charge_pdf"] || null,
             submitted_at: new Date().toISOString(),
           },
         ])
