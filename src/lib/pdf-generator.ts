@@ -1,6 +1,24 @@
 import PDFDocument from "pdfkit";
 import type { ApplicationData } from "./types";
 
+// Format phone number: 7867475065 → 786-747-5065
+function formatPhone(phone: string): string {
+  const clean = phone.replace(/\D/g, "");
+  if (clean.length === 10) {
+    return `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}`;
+  }
+  return phone;
+}
+
+// Format EIN: 392625200 → 39-2625200
+function formatEIN(ein: string): string {
+  const clean = ein.replace(/\D/g, "");
+  if (clean.length === 9) {
+    return `${clean.slice(0, 2)}-${clean.slice(2)}`;
+  }
+  return ein;
+}
+
 export async function generateAgreementPDF(
   applicantName: string,
   signatureDataUrl: string
@@ -159,7 +177,7 @@ export async function generateApplicationPDF(
     doc.text(`Name: ${p.firstName} ${p.middleName} ${p.lastName}`);
     doc.text(`Date of Birth: ${p.dob}`);
     doc.text(`Email: ${p.email}`);
-    doc.text(`Phone: ${p.phone}`);
+    doc.text(`Phone: ${formatPhone(p.phone)}`);
     doc.moveDown(0.5);
 
     // Address Information
@@ -218,7 +236,7 @@ export async function generateApplicationPDF(
       doc.text(`Legal Name: ${b.legalName}`);
       doc.text(`Title: ${b.title}`);
       doc.text(`Ownership: ${b.ownershipPercent}%`);
-      doc.text(`EIN: ${b.ein}`);
+      doc.text(`EIN: ${formatEIN(b.ein)}`);
       doc.text(`Years in Business: ${b.yearsInBusiness}`);
       doc.text(`Bank: ${b.bankName}`);
       doc.moveDown(0.5);
