@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
         const pdfPath = `${folderPath}/application.pdf`;
         const { error } = await supabase.storage
           .from("Applications")
-          .upload(pdfPath, applicationPdfBuffer, { contentType: "application/pdf" });
+          .upload(pdfPath, new Uint8Array(applicationPdfBuffer), { contentType: "application/pdf" });
 
         if (error) {
           console.error("Failed to upload application PDF:", error.message);
@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
         const pdfPath = `${folderPath}/agreement-signed.pdf`;
         const { error } = await supabase.storage
           .from("Applications")
-          .upload(pdfPath, agreementPdfBuffer, { contentType: "application/pdf" });
+          .upload(pdfPath, new Uint8Array(agreementPdfBuffer), { contentType: "application/pdf" });
 
         if (error) {
           console.error("Failed to upload agreement PDF:", error.message);
@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
         const pdfPath = `${folderPath}/payment-confirmation.pdf`;
         const { error } = await supabase.storage
           .from("Applications")
-          .upload(pdfPath, chargePdfBuffer, { contentType: "application/pdf" });
+          .upload(pdfPath, new Uint8Array(chargePdfBuffer), { contentType: "application/pdf" });
 
         if (error) {
           console.error("Failed to upload charge confirmation PDF:", error.message);
