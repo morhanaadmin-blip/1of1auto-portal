@@ -169,19 +169,25 @@ export async function POST(req: NextRequest) {
     if (applicationPdfBuffer) {
       try {
         const pdfPath = `${folderPath}/application.pdf`;
-        const { error } = await supabase.storage
-          .from("Applications")
-          .upload(pdfPath, new Uint8Array(applicationPdfBuffer), { contentType: "application/pdf" });
+        console.log(`Attempting to upload application PDF (${applicationPdfBuffer.length} bytes) to ${pdfPath}`);
 
-        if (error) {
-          console.error("Failed to upload application PDF:", error.message);
+        const uploadResult = await supabase.storage
+          .from("Applications")
+          .upload(pdfPath, applicationPdfBuffer);
+
+        console.log("Upload result:", uploadResult);
+
+        if (uploadResult.error) {
+          console.error("Failed to upload application PDF:", uploadResult.error);
         } else {
           uploadedFiles["application_pdf"] = pdfPath;
-          console.log(`Uploaded application PDF to ${pdfPath}`);
+          console.log(`✓ Uploaded application PDF to ${pdfPath}`);
         }
       } catch (err) {
-        console.error("Error uploading application PDF:", err);
+        console.error("Exception uploading application PDF:", err instanceof Error ? err.message : String(err), err);
       }
+    } else {
+      console.log("applicationPdfBuffer is null or undefined");
     }
 
     if (agreementPdfBuffer) {
