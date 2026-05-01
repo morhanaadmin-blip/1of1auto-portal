@@ -91,7 +91,7 @@ export default function PageEmployment({ person, update, onNext }: Props) {
         label="Employer phone"
         value={person.employerPhone}
         onChange={(v) => update({ employerPhone: v })}
-        type="tel"
+        type="text"
         inputMode="tel"
         required
       />

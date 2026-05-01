@@ -76,7 +76,7 @@ export default function PageBusiness({ business, update, onNext }: Props) {
           label="Business phone"
           value={business.phone}
           onChange={(v) => update({ phone: v })}
-          type="tel"
+          type="text"
           inputMode="tel"
           required
         />
@@ -190,7 +190,7 @@ export default function PageBusiness({ business, update, onNext }: Props) {
               label="Contact phone"
               value={business.bankContactPhone}
               onChange={(v) => update({ bankContactPhone: v })}
-              type="tel"
+              type="text"
               inputMode="tel"
             />
           </div>
