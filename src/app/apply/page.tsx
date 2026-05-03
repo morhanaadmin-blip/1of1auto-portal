@@ -237,10 +237,53 @@ function ApplyFlow() {
     }
   };
 
+  // Compress image files to keep total payload under Vercel's 4.5MB limit.
+  // Skips non-image files (PDFs) unchanged.
+  const compressFile = async (file: File, maxKB = 900): Promise<File> => {
+    if (!file.type.startsWith("image/") || file.size <= maxKB * 1024) return file;
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const maxDim = 1920;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const ratio = Math.min(maxDim / width, maxDim / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }) : file),
+          "image/jpeg",
+          0.75
+        );
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  };
+
   const submit = async () => {
     setSubmitting(true);
     setError("");
     try {
+      // Compress images before upload to stay under Vercel's 4.5MB body limit
+      const [primaryLicense, coappLicense, insurance, registration, utilityBill, dlPhoto, bizLicense] =
+        await Promise.all([
+          data.primary.licenseFile ? compressFile(data.primary.licenseFile) : null,
+          data.coApplicant?.licenseFile ? compressFile(data.coApplicant.licenseFile) : null,
+          data.documents.insurance ? compressFile(data.documents.insurance) : null,
+          data.documents.registration ? compressFile(data.documents.registration) : null,
+          data.documents.utilityBill ? compressFile(data.documents.utilityBill) : null,
+          data.documents.driverLicensePhoto ? compressFile(data.documents.driverLicensePhoto) : null,
+          data.documents.businessLicense ? compressFile(data.documents.businessLicense) : null,
+        ]);
+
       const formData = new FormData();
       formData.append("application", JSON.stringify({
         ...data,
@@ -251,28 +294,37 @@ function ApplyFlow() {
         documents: { ...data.documents, driverLicensePhoto: null },
       }));
 
-      if (data.primary.licenseFile) formData.append("primary_license", data.primary.licenseFile);
-      if (data.coApplicant?.licenseFile) formData.append("coapp_license", data.coApplicant.licenseFile);
-      if (data.documents.insurance) formData.append("insurance", data.documents.insurance);
-      if (data.documents.registration) formData.append("registration", data.documents.registration);
-      if (data.documents.utilityBill) formData.append("utility_bill", data.documents.utilityBill);
-      if (data.documents.driverLicensePhoto) formData.append("driver_license_photo", data.documents.driverLicensePhoto);
-      if (data.documents.businessLicense) formData.append("business_license", data.documents.businessLicense);
+      if (primaryLicense) formData.append("primary_license", primaryLicense);
+      if (coappLicense) formData.append("coapp_license", coappLicense);
+      if (insurance) formData.append("insurance", insurance);
+      if (registration) formData.append("registration", registration);
+      if (utilityBill) formData.append("utility_bill", utilityBill);
+      if (dlPhoto) formData.append("driver_license_photo", dlPhoto);
+      if (bizLicense) formData.append("business_license", bizLicense);
 
       const res = await fetch("/api/submit", { method: "POST", body: formData });
-      const body = await res.json();
+
+      // Parse response safely — non-JSON (e.g. Vercel 413) would crash res.json()
+      let body: Record<string, unknown>;
+      try {
+        body = await res.json();
+      } catch {
+        if (res.status === 413) throw new Error("Files are too large. Please try again — images will be compressed automatically.");
+        throw new Error(`Server error (${res.status}). Please try again.`);
+      }
+
+      if (!res.ok) {
+        throw new Error((body.error as string) || "Submission failed");
+      }
 
       // Check for upload errors even if submission was "successful"
-      if (body.uploadErrors && Object.keys(body.uploadErrors).length > 0) {
-        const errorList = Object.entries(body.uploadErrors)
+      if (body.uploadErrors && Object.keys(body.uploadErrors as object).length > 0) {
+        const errorList = Object.entries(body.uploadErrors as Record<string, string>)
           .map(([file, err]) => `${file}: ${err}`)
           .join("\n");
         throw new Error(`File upload failed:\n${errorList}`);
       }
 
-      if (!res.ok) {
-        throw new Error(body.error || "Submission failed");
-      }
       next();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed");
