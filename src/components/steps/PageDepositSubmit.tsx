@@ -41,7 +41,8 @@ export default function PageDepositSubmit({ data, setData, submit, submitting }:
       }
       if (json.url) {
         // Save application state before leaving the page
-        sessionStorage.setItem("1of1_app_data", JSON.stringify(data));
+        // Use localStorage — sessionStorage does not survive external redirects on mobile Safari
+        localStorage.setItem("1of1_app_data", JSON.stringify(data));
         window.location.href = json.url;
       } else {
         // Dev mode: Stripe not configured

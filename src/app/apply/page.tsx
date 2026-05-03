@@ -72,7 +72,8 @@ function ApplyFlow() {
     const paymentStatus = searchParams.get("payment");
     if (paymentStatus === "success" || paymentStatus === "cancel") {
       // Restore saved application state after Stripe redirect
-      const saved = sessionStorage.getItem("1of1_app_data");
+      // localStorage survives external redirects on mobile; sessionStorage does not
+      const saved = localStorage.getItem("1of1_app_data");
       if (saved) {
         try {
           const savedData = JSON.parse(saved);
@@ -81,8 +82,12 @@ function ApplyFlow() {
               ? { ...savedData, depositPaid: true, stripeSessionId: "stripe_verified" }
               : savedData
           );
-          sessionStorage.removeItem("1of1_app_data");
+          localStorage.removeItem("1of1_app_data");
         } catch {}
+      } else if (paymentStatus === "success") {
+        // State was lost (e.g. mobile browser cleared storage) but payment went through —
+        // still mark deposit paid so the user isn't charged twice
+        setData((prev) => ({ ...prev, depositPaid: true, stripeSessionId: "stripe_verified" }));
       }
       setStep("deposit");
     } else {
