@@ -238,34 +238,43 @@ function ApplyFlow() {
   };
 
   // Compress image files to keep total payload under Vercel's 4.5MB limit.
-  // Skips non-image files (PDFs) unchanged.
+  // Skips non-image files (PDFs) unchanged. Falls back to original on any error.
   const compressFile = async (file: File, maxKB = 900): Promise<File> => {
-    if (!file.type.startsWith("image/") || file.size <= maxKB * 1024) return file;
-    return new Promise((resolve) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const maxDim = 1920;
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          const ratio = Math.min(maxDim / width, maxDim / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }) : file),
-          "image/jpeg",
-          0.75
-        );
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-      img.src = url;
-    });
+    try {
+      if (!file.type.startsWith("image/") || file.size <= maxKB * 1024) return file;
+      return await new Promise((resolve) => {
+        const img = new Image();
+        let url: string;
+        try { url = URL.createObjectURL(file); } catch { resolve(file); return; }
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          try {
+            const maxDim = 1920;
+            let { width, height } = img;
+            if (width > maxDim || height > maxDim) {
+              const ratio = Math.min(maxDim / width, maxDim / height);
+              width = Math.round(width * ratio);
+              height = Math.round(height * ratio);
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) { resolve(file); return; }
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob(
+              (blob) => resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }) : file),
+              "image/jpeg",
+              0.75
+            );
+          } catch { resolve(file); }
+        };
+        img.onerror = () => { try { URL.revokeObjectURL(url); } catch {} resolve(file); };
+        img.src = url;
+      });
+    } catch {
+      return file;
+    }
   };
 
   const submit = async () => {
