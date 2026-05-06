@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { motion } from "motion/react";
 
 type Props = {
@@ -13,17 +14,16 @@ type Props = {
  * Phase 3 (1.3–2.0s): Full lockup holds, then fades out.
  */
 export default function LogoIntro({ onComplete }: Props) {
+  // Last animation finishes at ~2.0s (shimmer at 1.1 + 0.7 + tagline at 1.3 + 0.5)
+  // Wait 2.8s total to let everything settle before handing off to the form
+  useEffect(() => {
+    const timer = setTimeout(onComplete, 2800);
+    return () => clearTimeout(timer);
+  }, [onComplete]);
+
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-background"
-      initial={{ opacity: 1 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.5 }}
-      onAnimationComplete={() => {
-        // Trigger onComplete after the full intro sequence
-        setTimeout(onComplete, 2000);
-      }}
     >
       <div className="relative w-[320px] h-[200px] flex items-center justify-center">
         {/* Blue slash — top-right to center */}
