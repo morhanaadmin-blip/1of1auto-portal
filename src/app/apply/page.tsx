@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import Header from "@/components/Header";
-import LogoIntro from "@/components/LogoIntro";
+import HomeIntro from "@/components/HomeIntro";
 import PageScan from "@/components/steps/PageScan";
 import PageConfirm from "@/components/steps/PageConfirm";
 import PageHousing from "@/components/steps/PageHousing";
@@ -372,7 +372,7 @@ function ApplyFlow() {
   const [currentIdx, totalSteps] = getStepIndex();
 
   if (showIntro) {
-    return <LogoIntro onComplete={() => setShowIntro(false)} />;
+    return <HomeIntro onComplete={() => setShowIntro(false)} />;
   }
 
   if (step === "confirmation") {
