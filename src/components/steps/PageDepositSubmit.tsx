@@ -40,9 +40,25 @@ export default function PageDepositSubmit({ data, setData, submit, submitting }:
         throw new Error(json.error || "Payment setup failed");
       }
       if (json.url) {
-        // Save application state before leaving the page
-        // Use localStorage — sessionStorage does not survive external redirects on mobile Safari
-        localStorage.setItem("1of1_app_data", JSON.stringify(data));
+        // Save application state before leaving the page.
+        // File objects cannot survive JSON serialization — strip them to null.
+        // On return, the app will detect missing required docs and route back to Documents.
+        const dataToSave = {
+          ...data,
+          primary: { ...data.primary, licenseFile: null, licenseImage: null },
+          coApplicant: data.coApplicant
+            ? { ...data.coApplicant, licenseFile: null, licenseImage: null }
+            : null,
+          documents: {
+            ...data.documents,
+            insurance: null,
+            registration: null,
+            driverLicensePhoto: null,
+            utilityBill: null,
+            businessLicense: null,
+          },
+        };
+        localStorage.setItem("1of1_app_data", JSON.stringify(dataToSave));
         window.location.href = json.url;
       } else {
         // Dev mode: Stripe not configured

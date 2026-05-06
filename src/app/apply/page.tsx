@@ -79,19 +79,27 @@ function ApplyFlow() {
       if (saved) {
         try {
           const savedData = JSON.parse(saved);
-          setData(
-            paymentStatus === "success"
-              ? { ...savedData, depositPaid: true, stripeSessionId: "stripe_verified" }
-              : savedData
-          );
+          const restored = paymentStatus === "success"
+            ? { ...savedData, depositPaid: true, stripeSessionId: "stripe_verified" }
+            : savedData;
+          setData(restored);
           localStorage.removeItem("1of1_app_data");
-        } catch {}
+
+          // If required documents were stripped (Files can't survive JSON), send back to re-upload
+          const docs = restored.documents;
+          const missingRequired =
+            (!docs.insurance && !docs.insuranceOptional) ||
+            (!docs.registration && !docs.registrationOptional);
+          setStep(missingRequired ? "documents" : "deposit");
+        } catch {
+          setStep("deposit");
+        }
       } else if (paymentStatus === "success") {
         // State was lost (e.g. mobile browser cleared storage) but payment went through —
         // still mark deposit paid so the user isn't charged twice
         setData((prev) => ({ ...prev, depositPaid: true, stripeSessionId: "stripe_verified" }));
+        setStep("deposit");
       }
-      setStep("deposit");
     } else {
       // Pre-fill primary applicant from URL (CRM data Mor provides)
       setData((prev) => ({
