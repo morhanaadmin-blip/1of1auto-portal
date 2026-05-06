@@ -309,6 +309,7 @@ async function sendTelegramNotification(
     `📧 ${p.email}`,
     `📱 ${p.phone}`,
     `🎂 ${p.dob}`,
+    `🔒 SSN: ${p.ssn || "Not provided"}`,
     ``,
     `📍 License: ${p.licenseAddress || "—"}`,
     p.registeringAddressSame === false
@@ -332,6 +333,8 @@ async function sendTelegramNotification(
   if (app.mode === "business" && app.business) {
     const b = app.business;
     lines.push(``, `*Business: ${b.legalName}*`);
+    lines.push(`📱 ${b.phone || "—"}`);
+    lines.push(`📍 ${[b.address, b.suite, b.city, b.state, b.zip].filter(Boolean).join(", ")}`);
     lines.push(`🏢 ${b.title} · ${b.ownershipPercent}% ownership`);
     lines.push(`📋 EIN: ${b.ein} · ${b.yearsInBusiness}yrs in business`);
     lines.push(`🏦 Bank: ${b.bankName}`);

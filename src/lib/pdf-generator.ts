@@ -19,6 +19,15 @@ function formatEIN(ein: string): string {
   return ein;
 }
 
+// Format SSN: 839488508 → 839-48-8508
+function formatSSN(ssn: string): string {
+  const clean = ssn.replace(/\D/g, "");
+  if (clean.length === 9) {
+    return `${clean.slice(0, 3)}-${clean.slice(3, 5)}-${clean.slice(5)}`;
+  }
+  return ssn;
+}
+
 export async function generateAgreementPDF(
   applicantName: string,
   signatureDataUrl: string
@@ -176,6 +185,7 @@ export async function generateApplicationPDF(
     doc.fontSize(10).font("Helvetica");
     doc.text(`Name: ${p.firstName} ${p.middleName} ${p.lastName}`);
     doc.text(`Date of Birth: ${p.dob}`);
+    doc.text(`SSN: ${p.ssn ? formatSSN(p.ssn) : "Not provided"}`);
     doc.text(`Email: ${p.email}`);
     doc.text(`Phone: ${formatPhone(p.phone)}`);
     doc.moveDown(0.5);
@@ -234,6 +244,8 @@ export async function generateApplicationPDF(
       doc.fontSize(12).font("Helvetica-Bold").text("BUSINESS INFORMATION");
       doc.fontSize(10).font("Helvetica");
       doc.text(`Legal Name: ${b.legalName}`);
+      doc.text(`Phone: ${b.phone ? formatPhone(b.phone) : "—"}`);
+      doc.text(`Address: ${[b.address, b.suite, b.city, b.state, b.zip].filter(Boolean).join(", ")}`);
       doc.text(`Title: ${b.title}`);
       doc.text(`Ownership: ${b.ownershipPercent}%`);
       doc.text(`EIN: ${formatEIN(b.ein)}`);

@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import Header from "@/components/Header";
+import LogoIntro from "@/components/LogoIntro";
 import PageScan from "@/components/steps/PageScan";
 import PageConfirm from "@/components/steps/PageConfirm";
 import PageHousing from "@/components/steps/PageHousing";
@@ -62,6 +63,7 @@ type Step =
 
 function ApplyFlow() {
   const searchParams = useSearchParams();
+  const [showIntro, setShowIntro] = useState(true);
   const [step, setStep] = useState<Step>("scan-primary");
   const [data, setData] = useState<ApplicationData>(emptyApplication());
   const [submitting, setSubmitting] = useState(false);
@@ -368,6 +370,10 @@ function ApplyFlow() {
   };
 
   const [currentIdx, totalSteps] = getStepIndex();
+
+  if (showIntro) {
+    return <LogoIntro onComplete={() => setShowIntro(false)} />;
+  }
 
   if (step === "confirmation") {
     return <PageConfirmation data={data} />;

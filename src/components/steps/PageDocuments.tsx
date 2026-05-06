@@ -96,7 +96,7 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
 
   // Check if DL photo needs to be uploaded (scan was skipped)
   const dlPhotoRequired =
-    data.primary.dlPhotoTracking?.skipped === true &&
+    (data.primary.dlPhotoTracking?.skipped === true || data.primary.dlPhotoTracking === null) &&
     !data.primary.licenseFile;
 
   // Validation: document can be optional if checkbox is checked, otherwise required
