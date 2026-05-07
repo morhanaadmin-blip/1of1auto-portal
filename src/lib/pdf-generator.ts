@@ -216,6 +216,7 @@ export async function generateApplicationPDF(
     doc.fontSize(10).font("Helvetica");
     doc.text(`Occupation: ${p.occupation}`);
     doc.text(`Employer: ${p.employerName}`);
+    if (p.employerPhone) doc.text(`Employer Phone: ${formatPhone(p.employerPhone)}`);
     doc.text(`Years Employed: ${p.yearsWorked}y ${p.monthsWorked}m`);
     doc.moveDown(0.5);
 
@@ -258,9 +259,15 @@ export async function generateApplicationPDF(
     doc.fontSize(12).font("Helvetica-Bold").text("DOCUMENTS");
     doc.fontSize(10).font("Helvetica");
     const docs = application.documents;
-    doc.text(`Insurance: ${docs.insurance ? "Uploaded" : docs.insuranceOptional ? "Waived" : "Not provided"}`);
-    doc.text(`Registration: ${docs.registration ? "Uploaded" : docs.registrationOptional ? "Waived" : "Not provided"}`);
-    doc.text(`Driver License Photo: ${docs.driverLicensePhoto ? "Uploaded" : "Not provided"}`);
+    const staged = application._staged || {};
+    const hasInsurance = !!(docs.insurance || staged.insurance);
+    const hasRegistration = !!(docs.registration || staged.registration);
+    const hasDLPhoto = !!(docs.driverLicensePhoto || staged.driverLicensePhoto);
+    const hasPrimaryLicense = !!(application.primary.licenseFile || application.primary.licenseImage || staged.primaryLicense);
+    doc.text(`Driver License: ${hasPrimaryLicense ? "Uploaded" : "Not provided"}`);
+    doc.text(`Insurance: ${hasInsurance ? "Uploaded" : docs.insuranceOptional ? "Waived" : "Not provided"}`);
+    doc.text(`Registration: ${hasRegistration ? "Uploaded" : docs.registrationOptional ? "Waived" : "Not provided"}`);
+    if (hasDLPhoto) doc.text(`Driver License Photo: Uploaded`);
     doc.moveDown(0.5);
 
     // Agreement & Deposit
