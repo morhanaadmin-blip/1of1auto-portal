@@ -104,6 +104,18 @@ export type ApplicationRecord = {
   notes: string | null;
 };
 
+// Paths to files already uploaded to Supabase before the Stripe redirect.
+// Strings survive JSON serialization; File objects do not.
+export type StagedFiles = {
+  primaryLicense?: string | null;
+  coAppLicense?: string | null;
+  insurance?: string | null;
+  registration?: string | null;
+  driverLicensePhoto?: string | null;
+  utilityBill?: string | null;
+  businessLicense?: string | null;
+};
+
 export type ApplicationData = {
   mode: ApplicationMode;
   primary: PersonData;
@@ -113,6 +125,7 @@ export type ApplicationData = {
   agreement: AgreementData;
   depositPaid: boolean;
   stripeSessionId: string;
+  _staged?: StagedFiles;
 };
 
 export const emptyPerson = (): PersonData => ({

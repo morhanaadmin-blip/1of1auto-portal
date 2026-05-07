@@ -97,6 +97,22 @@ export async function POST(req: NextRequest) {
       console.error("Error generating charge confirmation PDF:", err);
     }
 
+    // Pre-staged files were uploaded before Stripe redirect — map them directly to uploadedFiles.
+    const staged = (application as { _staged?: Record<string, string | null | undefined> })._staged || {};
+    const uploadedFiles: { [key: string]: string } = {};
+    const keyMap: Record<string, string> = {
+      primaryLicense: "primary_license",
+      coAppLicense: "coapp_license",
+      insurance: "insurance",
+      registration: "registration",
+      driverLicensePhoto: "driver_license_photo",
+      utilityBill: "utility_bill",
+      businessLicense: "business_license",
+    };
+    for (const [stagedKey, dbKey] of Object.entries(keyMap)) {
+      if (staged[stagedKey]) uploadedFiles[dbKey] = staged[stagedKey] as string;
+    }
+
     // Collect file metadata
     const files: { field: string; name: string; size: number; type: string }[] = [];
     const fileMap: { [key: string]: File } = {};
@@ -137,8 +153,7 @@ export async function POST(req: NextRequest) {
     const customerName = sanitizePath(`${p.firstName} ${p.lastName}`);
     const folderPath = `${customerName}/${Date.now()}`;
 
-    // Upload files to Supabase Storage
-    const uploadedFiles: { [key: string]: string } = {};
+    // Upload files to Supabase Storage (pre-staged files already in uploadedFiles)
     const uploadErrors: { [key: string]: string } = {};
     for (const [key, file] of Object.entries(fileMap)) {
       try {

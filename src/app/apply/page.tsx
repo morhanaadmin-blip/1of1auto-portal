@@ -68,7 +68,6 @@ function ApplyFlow() {
   const [data, setData] = useState<ApplicationData>(emptyApplication());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [reuploadBanner, setReuploadBanner] = useState(false);
 
   // Handle payment return from Stripe OR pre-fill from CRM URL params
   useEffect(() => {
@@ -86,18 +85,7 @@ function ApplyFlow() {
           setData(restored);
           localStorage.removeItem("1of1_app_data");
 
-          // Insurance/registration Files are lost on Stripe redirect — route back to re-upload.
-          // DL is recovered from licenseImage (data URL survives JSON), so no re-upload needed.
-          const docs = restored.documents;
-          const missingRequired =
-            (!docs.insurance && !docs.insuranceOptional) ||
-            (!docs.registration && !docs.registrationOptional);
-          if (missingRequired) {
-            setReuploadBanner(true);
-            setStep("documents");
-          } else {
-            setStep("deposit");
-          }
+          setStep("deposit");
         } catch {
           setStep("deposit");
         }
@@ -308,7 +296,11 @@ function ApplyFlow() {
     setSubmitting(true);
     setError("");
     try {
-      // If licenseFile was lost on Stripe redirect, recover it from the licenseImage data URL
+      const s = data._staged || {};
+
+      // For each file: use the in-memory File if present, otherwise fall back to
+      // the licenseImage data URL (DL scan survives as base64), otherwise null.
+      // Files pre-staged before Stripe redirect are sent as paths in _staged — skip upload.
       const primaryLicenseFile = data.primary.licenseFile
         ?? (data.primary.licenseImage ? dataURLtoFile(data.primary.licenseImage, "primary-license.jpg") : null);
       const coappLicenseFile = data.coApplicant?.licenseFile
@@ -318,13 +310,13 @@ function ApplyFlow() {
       // Compress images before upload to stay under Vercel's 4.5MB body limit
       const [primaryLicense, coappLicense, insurance, registration, utilityBill, dlPhoto, bizLicense] =
         await Promise.all([
-          primaryLicenseFile ? compressFile(primaryLicenseFile) : null,
-          coappLicenseFile ? compressFile(coappLicenseFile) : null,
-          data.documents.insurance ? compressFile(data.documents.insurance) : null,
-          data.documents.registration ? compressFile(data.documents.registration) : null,
-          data.documents.utilityBill ? compressFile(data.documents.utilityBill) : null,
-          data.documents.driverLicensePhoto ? compressFile(data.documents.driverLicensePhoto) : null,
-          data.documents.businessLicense ? compressFile(data.documents.businessLicense) : null,
+          !s.primaryLicense && primaryLicenseFile ? compressFile(primaryLicenseFile) : null,
+          !s.coAppLicense && coappLicenseFile ? compressFile(coappLicenseFile) : null,
+          !s.insurance && data.documents.insurance ? compressFile(data.documents.insurance) : null,
+          !s.registration && data.documents.registration ? compressFile(data.documents.registration) : null,
+          !s.utilityBill && data.documents.utilityBill ? compressFile(data.documents.utilityBill) : null,
+          !s.driverLicensePhoto && data.documents.driverLicensePhoto ? compressFile(data.documents.driverLicensePhoto) : null,
+          !s.businessLicense && data.documents.businessLicense ? compressFile(data.documents.businessLicense) : null,
         ]);
 
       const formData = new FormData();
@@ -471,22 +463,11 @@ function ApplyFlow() {
               <PageEmployment person={data.primary} update={updatePrimary} onNext={next} />
             )}
             {step === "documents" && (
-              <>
-                {reuploadBanner && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-4 rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-accent"
-                  >
-                    <strong>One more step.</strong> Your $99 payment went through. Please re-attach your documents below to complete your submission.
-                  </motion.div>
-                )}
-                <PageDocuments
-                  data={data}
-                  updateDocs={updateDocuments}
-                  onNext={() => { setReuploadBanner(false); next(); }}
-                />
-              </>
+              <PageDocuments
+                data={data}
+                updateDocs={updateDocuments}
+                onNext={next}
+              />
             )}
             {step === "agreement" && (
               <PageAgreement agreement={data.agreement} update={updateAgreement} onNext={next} />
