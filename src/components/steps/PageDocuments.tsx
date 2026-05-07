@@ -94,10 +94,9 @@ export default function PageDocuments({ data, updateDocs, onNext }: Props) {
   const needsUtilityBill = data.primary.registeringAddressSame === false;
   const needsBusinessLicense = data.mode === "business";
 
-  // Check if DL photo needs to be uploaded (scan was skipped)
-  const dlPhotoRequired =
-    (data.primary.dlPhotoTracking?.skipped === true || data.primary.dlPhotoTracking === null) &&
-    !data.primary.licenseFile;
+  // DL is required whenever we don't have the file — covers: never scanned, skipped,
+  // or scanned but file was lost (e.g. Stripe redirect strips File objects from localStorage)
+  const dlPhotoRequired = !data.primary.licenseFile;
 
   // Validation: document can be optional if checkbox is checked, otherwise required
   const insuranceReq = !data.documents.insuranceOptional;

@@ -85,9 +85,10 @@ function ApplyFlow() {
           setData(restored);
           localStorage.removeItem("1of1_app_data");
 
-          // If required documents were stripped (Files can't survive JSON), send back to re-upload
+          // Files cannot survive JSON serialization — route back to Documents to re-upload
           const docs = restored.documents;
           const missingRequired =
+            !restored.primary.licenseFile ||
             (!docs.insurance && !docs.insuranceOptional) ||
             (!docs.registration && !docs.registrationOptional);
           setStep(missingRequired ? "documents" : "deposit");
