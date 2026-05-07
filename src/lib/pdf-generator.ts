@@ -263,13 +263,13 @@ function drawAgreementSection(doc: Doc, application: ApplicationData): number {
 
 function drawHeader(doc: Doc): number {
   // Logo
-  const logoCandidates = ["logo-dark.png", "logo-1of1.png", "logo-hero.png"];
+  const logoCandidates = ["logo-new.png", "logo-dark.png", "logo-1of1.png", "logo-hero.png"];
   let logoDrawn = false;
   for (const name of logoCandidates) {
     try {
       const logoPath = path.join(process.cwd(), "public", name);
       if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, PW / 2 - 75, 28, { fit: [150, 55] });
+        doc.image(logoPath, PW / 2 - 110, 22, { fit: [220, 60] });
         logoDrawn = true;
         break;
       }
