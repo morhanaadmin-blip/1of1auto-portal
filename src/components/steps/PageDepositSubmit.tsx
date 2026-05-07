@@ -42,12 +42,13 @@ export default function PageDepositSubmit({ data, setData, submit, submitting }:
       if (json.url) {
         // Save application state before leaving the page.
         // File objects cannot survive JSON serialization — strip them to null.
-        // On return, the app will detect missing required docs and route back to Documents.
+        // licenseImage (base64 data URL) is a string and CAN survive — keep it so
+        // the DL photo can be reconstructed on submit without asking the customer again.
         const dataToSave = {
           ...data,
-          primary: { ...data.primary, licenseFile: null, licenseImage: null },
+          primary: { ...data.primary, licenseFile: null }, // keep licenseImage
           coApplicant: data.coApplicant
-            ? { ...data.coApplicant, licenseFile: null, licenseImage: null }
+            ? { ...data.coApplicant, licenseFile: null } // keep coApplicant.licenseImage
             : null,
           documents: {
             ...data.documents,

@@ -85,10 +85,10 @@ function ApplyFlow() {
           setData(restored);
           localStorage.removeItem("1of1_app_data");
 
-          // Files cannot survive JSON serialization — route back to Documents to re-upload
+          // Insurance/registration Files are lost on Stripe redirect — route back to re-upload.
+          // DL is recovered from licenseImage (data URL survives JSON), so no re-upload needed.
           const docs = restored.documents;
           const missingRequired =
-            !restored.primary.licenseFile ||
             (!docs.insurance && !docs.insuranceOptional) ||
             (!docs.registration && !docs.registrationOptional);
           setStep(missingRequired ? "documents" : "deposit");
@@ -248,6 +248,16 @@ function ApplyFlow() {
     }
   };
 
+  // Reconstruct a File from a base64 data URL (used to recover DL scan after Stripe redirect).
+  const dataURLtoFile = (dataUrl: string, filename: string): File => {
+    const [header, b64] = dataUrl.split(",");
+    const mime = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+    const bytes = atob(b64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    return new File([arr], filename, { type: mime });
+  };
+
   // Compress image files to keep total payload under Vercel's 4.5MB limit.
   // Skips non-image files (PDFs) unchanged. Falls back to original on any error.
   const compressFile = async (file: File, maxKB = 900): Promise<File> => {
@@ -292,11 +302,18 @@ function ApplyFlow() {
     setSubmitting(true);
     setError("");
     try {
+      // If licenseFile was lost on Stripe redirect, recover it from the licenseImage data URL
+      const primaryLicenseFile = data.primary.licenseFile
+        ?? (data.primary.licenseImage ? dataURLtoFile(data.primary.licenseImage, "primary-license.jpg") : null);
+      const coappLicenseFile = data.coApplicant?.licenseFile
+        ?? (data.coApplicant?.licenseImage ? dataURLtoFile(data.coApplicant.licenseImage, "coapp-license.jpg") : null)
+        ?? null;
+
       // Compress images before upload to stay under Vercel's 4.5MB body limit
       const [primaryLicense, coappLicense, insurance, registration, utilityBill, dlPhoto, bizLicense] =
         await Promise.all([
-          data.primary.licenseFile ? compressFile(data.primary.licenseFile) : null,
-          data.coApplicant?.licenseFile ? compressFile(data.coApplicant.licenseFile) : null,
+          primaryLicenseFile ? compressFile(primaryLicenseFile) : null,
+          coappLicenseFile ? compressFile(coappLicenseFile) : null,
           data.documents.insurance ? compressFile(data.documents.insurance) : null,
           data.documents.registration ? compressFile(data.documents.registration) : null,
           data.documents.utilityBill ? compressFile(data.documents.utilityBill) : null,
