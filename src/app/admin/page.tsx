@@ -57,6 +57,8 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [regenerating, setRegenerating] = useState<Set<string>>(new Set());
+  const [regenStatus, setRegenStatus] = useState<Record<string, string>>({});
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -79,6 +81,42 @@ export default function AdminPage() {
       setError("Connection error");
     }
     setLoading(false);
+  }
+
+  async function regeneratePdf(id: string) {
+    setRegenerating((prev) => new Set(prev).add(id));
+    setRegenStatus((prev) => ({ ...prev, [id]: "" }));
+    try {
+      const res = await fetch("/api/admin/regenerate-pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-password": savedPassword,
+        },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRegenStatus((prev) => ({ ...prev, [id]: "done" }));
+        // Reload applications to get fresh PDF URL
+        const appsRes = await fetch("/api/admin/applications", {
+          headers: { "x-admin-password": savedPassword },
+        });
+        if (appsRes.ok) {
+          const appsData = await appsRes.json();
+          setApplications(appsData.applications);
+        }
+      } else {
+        setRegenStatus((prev) => ({ ...prev, [id]: data.error || "error" }));
+      }
+    } catch {
+      setRegenStatus((prev) => ({ ...prev, [id]: "error" }));
+    }
+    setRegenerating((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }
 
   function toggleExpand(id: string) {
@@ -238,6 +276,23 @@ export default function AdminPage() {
                           <div className="text-zinc-600 text-sm italic">No files uploaded</div>
                         )}
                       </div>
+                    </div>
+
+                    {/* Regenerate PDF */}
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => regeneratePdf(app.id)}
+                        disabled={regenerating.has(app.id)}
+                        className="text-xs bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white rounded-lg px-3 py-2 transition-colors disabled:opacity-50"
+                      >
+                        {regenerating.has(app.id) ? "Regenerating..." : "↻ Regenerate App PDF"}
+                      </button>
+                      {regenStatus[app.id] === "done" && (
+                        <span className="text-green-400 text-xs">PDF updated</span>
+                      )}
+                      {regenStatus[app.id] && regenStatus[app.id] !== "done" && (
+                        <span className="text-red-400 text-xs">{regenStatus[app.id]}</span>
+                      )}
                     </div>
                   </div>
                 )}
