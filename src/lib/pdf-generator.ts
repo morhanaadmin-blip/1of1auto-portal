@@ -311,7 +311,12 @@ function drawFooter(doc: Doc) {
 
 export async function generateApplicationPDF(application: ApplicationData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: MARGIN, size: "letter", autoFirstPage: true });
+    const doc = new PDFDocument({
+      size: "letter",
+      autoFirstPage: true,
+      // bottom: 0 so we can draw the footer at y=756 without pdfkit auto-creating a new page
+      margins: { top: MARGIN, left: MARGIN, right: MARGIN, bottom: 0 },
+    });
     const buffers: Buffer[] = [];
     doc.on("data", (chunk) => buffers.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(buffers)));
@@ -358,7 +363,7 @@ export async function generateAgreementPDF(
   signatureDataUrl: string
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: MARGIN, size: "letter" });
+    const doc = new PDFDocument({ size: "letter", margins: { top: MARGIN, left: MARGIN, right: MARGIN, bottom: 0 } });
     const buffers: Buffer[] = [];
     doc.on("data", (chunk) => buffers.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(buffers)));
@@ -412,7 +417,7 @@ export async function generateChargeConfirmationPDF(
   cardLast4: string
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: MARGIN, size: "letter" });
+    const doc = new PDFDocument({ size: "letter", margins: { top: MARGIN, left: MARGIN, right: MARGIN, bottom: 0 } });
     const buffers: Buffer[] = [];
     doc.on("data", (chunk) => buffers.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(buffers)));
