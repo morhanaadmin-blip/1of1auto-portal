@@ -68,6 +68,7 @@ function ApplyFlow() {
   const [data, setData] = useState<ApplicationData>(emptyApplication());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [reuploadBanner, setReuploadBanner] = useState(false);
 
   // Handle payment return from Stripe OR pre-fill from CRM URL params
   useEffect(() => {
@@ -91,7 +92,12 @@ function ApplyFlow() {
           const missingRequired =
             (!docs.insurance && !docs.insuranceOptional) ||
             (!docs.registration && !docs.registrationOptional);
-          setStep(missingRequired ? "documents" : "deposit");
+          if (missingRequired) {
+            setReuploadBanner(true);
+            setStep("documents");
+          } else {
+            setStep("deposit");
+          }
         } catch {
           setStep("deposit");
         }
@@ -465,11 +471,22 @@ function ApplyFlow() {
               <PageEmployment person={data.primary} update={updatePrimary} onNext={next} />
             )}
             {step === "documents" && (
-              <PageDocuments
-                data={data}
-                updateDocs={updateDocuments}
-                onNext={next}
-              />
+              <>
+                {reuploadBanner && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-4 rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-accent"
+                  >
+                    <strong>One more step.</strong> Your $99 payment went through. Please re-attach your documents below to complete your submission.
+                  </motion.div>
+                )}
+                <PageDocuments
+                  data={data}
+                  updateDocs={updateDocuments}
+                  onNext={() => { setReuploadBanner(false); next(); }}
+                />
+              </>
             )}
             {step === "agreement" && (
               <PageAgreement agreement={data.agreement} update={updateAgreement} onNext={next} />
