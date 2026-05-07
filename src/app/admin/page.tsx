@@ -35,10 +35,10 @@ interface Application {
   files: AppFiles;
 }
 
-const FILE_LABELS: { key: keyof AppFiles; label: string; icon: string }[] = [
-  { key: "applicationPdf", label: "Application PDF", icon: "📄" },
-  { key: "agreement", label: "Signed Agreement", icon: "✍️" },
-  { key: "chargeConfirmation", label: "CC Confirmation", icon: "💳" },
+const FILE_LABELS: { key: keyof AppFiles; label: string; icon: string; isPdf?: boolean }[] = [
+  { key: "applicationPdf", label: "Application PDF", icon: "📄", isPdf: true },
+  { key: "agreement", label: "Signed Agreement", icon: "✍️", isPdf: true },
+  { key: "chargeConfirmation", label: "CC Confirmation", icon: "💳", isPdf: true },
   { key: "primaryLicense", label: "Driver License", icon: "🪪" },
   { key: "coApplicantLicense", label: "Co-App License", icon: "🪪" },
   { key: "insurance", label: "Insurance Card", icon: "🛡️" },
@@ -50,6 +50,7 @@ const FILE_LABELS: { key: keyof AppFiles; label: string; icon: string }[] = [
 
 export default function AdminPage() {
   const [password, setPassword] = useState("");
+  const [savedPassword, setSavedPassword] = useState("");
   const [authed, setAuthed] = useState(false);
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,6 +73,7 @@ export default function AdminPage() {
       }
       const data = await res.json();
       setApplications(data.applications);
+      setSavedPassword(password);
       setAuthed(true);
     } catch {
       setError("Connection error");
@@ -202,21 +204,34 @@ export default function AdminPage() {
                     <div className="space-y-2">
                       <div className="text-xs text-zinc-500 uppercase tracking-wide font-semibold">Documents</div>
                       <div className="grid grid-cols-1 gap-2">
-                        {FILE_LABELS.map(({ key, label, icon }) => {
+                        {FILE_LABELS.map(({ key, label, icon, isPdf }) => {
                           const url = app.files[key];
                           if (!url) return null;
+                          // Extract storage path from full URL
+                          const storagePath = url.split("/Applications/")[1] || "";
+                          const downloadUrl = `/api/admin/download?pw=${encodeURIComponent(savedPassword)}&path=${encodeURIComponent(storagePath)}`;
                           return (
-                            <a
-                              key={key}
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg px-3 py-2.5 text-sm transition-colors"
-                            >
+                            <div key={key} className="flex items-center gap-2 bg-zinc-800 rounded-lg px-3 py-2.5 text-sm">
                               <span>{icon}</span>
                               <span className="text-white flex-1">{label}</span>
-                              <span className="text-zinc-500 text-xs">↗</span>
-                            </a>
+                              {isPdf ? (
+                                <a
+                                  href={downloadUrl}
+                                  className="text-yellow-400 hover:text-yellow-300 text-xs font-medium px-2 py-1 border border-yellow-500/30 rounded"
+                                >
+                                  ↓ Download
+                                </a>
+                              ) : (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-zinc-400 hover:text-white text-xs"
+                                >
+                                  ↗ View
+                                </a>
+                              )}
+                            </div>
                           );
                         })}
                         {fileCount === 0 && (
