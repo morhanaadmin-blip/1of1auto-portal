@@ -109,8 +109,9 @@ function sectionHeader(doc: Doc, y: number, title: string): number {
 /** Check if near page bottom; add page if so. Returns current y. */
 function checkPage(doc: Doc): number {
   if (doc.y > 700) {
+    drawFooter(doc);
     doc.addPage();
-    doc.y = MARGIN;
+    // pdfkit resets cursor to top of new page automatically
   }
   return doc.y;
 }
@@ -298,10 +299,11 @@ function drawHeader(doc: Doc): number {
 function drawFooter(doc: Doc) {
   const y = 756;
   goldRule(doc, y - 5);
+  // lineBreak: false prevents text overflow from triggering a new page (avoids pageAdded loop)
   doc.font("Helvetica").fontSize(7).fillColor(GRAY)
     .text(
-      "1 OF 1 AUTO INC.   •   3113 Stirling Rd. (Suite 203), Fort Lauderdale, FL 33312   •   Oneofoneauto@gmail.com   •   954-770-1177",
-      MARGIN, y + 1, { align: "center", width: CW }
+      "1 OF 1 AUTO INC.   \u2022   3113 Stirling Rd. (Suite 203), Fort Lauderdale, FL 33312   \u2022   Oneofoneauto@gmail.com   \u2022   954-770-1177",
+      MARGIN, y + 1, { align: "center", width: CW, lineBreak: false }
     );
 }
 
@@ -314,9 +316,6 @@ export async function generateApplicationPDF(application: ApplicationData): Prom
     doc.on("data", (chunk) => buffers.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(buffers)));
     doc.on("error", reject);
-
-    // Footer on every page
-    doc.on("pageAdded", () => drawFooter(doc));
 
     // Header
     drawHeader(doc);
