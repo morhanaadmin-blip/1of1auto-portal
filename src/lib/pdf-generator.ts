@@ -217,6 +217,8 @@ export async function generateApplicationPDF(
     doc.text(`Occupation: ${p.occupation}`);
     doc.text(`Employer: ${p.employerName}`);
     if (p.employerPhone) doc.text(`Employer Phone: ${formatPhone(p.employerPhone)}`);
+    const employerAddr = [p.employerStreet, p.employerCity, p.employerState, p.employerZip].filter(Boolean).join(", ");
+    if (employerAddr) doc.text(`Employer Address: ${employerAddr}`);
     doc.text(`Years Employed: ${p.yearsWorked}y ${p.monthsWorked}m`);
     doc.moveDown(0.5);
 
