@@ -14,7 +14,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = await req.json();
+  const body = await req.json();
+  const { id, patches } = body as { id: string; patches?: Record<string, string> };
   if (!id) {
     return NextResponse.json({ error: "Missing application id" }, { status: 400 });
   }
@@ -40,6 +41,16 @@ export async function POST(req: NextRequest) {
   const application: ApplicationData = typeof row.application_json === "string"
     ? JSON.parse(row.application_json)
     : row.application_json;
+
+  // Apply admin patches (e.g. missing employer address fields)
+  if (patches && Object.keys(patches).length > 0) {
+    application.primary = { ...application.primary, ...patches } as typeof application.primary;
+    // Persist patches back into application_json in the DB
+    await supabase
+      .from("applications")
+      .update({ application_json: application })
+      .eq("id", id);
+  }
 
   // Reconstruct _staged from stored DB file paths so document status shows correctly
   (application as Record<string, unknown>)._staged = {

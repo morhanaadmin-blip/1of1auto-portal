@@ -59,6 +59,7 @@ export default function AdminPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [regenerating, setRegenerating] = useState<Set<string>>(new Set());
   const [regenStatus, setRegenStatus] = useState<Record<string, string>>({});
+  const [patches, setPatches] = useState<Record<string, Record<string, string>>>({});
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -83,6 +84,13 @@ export default function AdminPage() {
     setLoading(false);
   }
 
+  function setPatch(id: string, field: string, value: string) {
+    setPatches((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), [field]: value },
+    }));
+  }
+
   async function regeneratePdf(id: string) {
     setRegenerating((prev) => new Set(prev).add(id));
     setRegenStatus((prev) => ({ ...prev, [id]: "" }));
@@ -93,7 +101,7 @@ export default function AdminPage() {
           "Content-Type": "application/json",
           "x-admin-password": savedPassword,
         },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id, patches: patches[id] || {} }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -275,6 +283,37 @@ export default function AdminPage() {
                         {fileCount === 0 && (
                           <div className="text-zinc-600 text-sm italic">No files uploaded</div>
                         )}
+                      </div>
+                    </div>
+
+                    {/* Edit missing fields */}
+                    <div className="space-y-2">
+                      <div className="text-xs text-zinc-500 uppercase tracking-wide font-semibold">Fill missing employer address (optional)</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          placeholder="Street"
+                          value={(patches[app.id] || {}).employerStreet ?? ""}
+                          onChange={(e) => setPatch(app.id, "employerStreet", e.target.value)}
+                          className="col-span-2 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-yellow-500"
+                        />
+                        <input
+                          placeholder="City"
+                          value={(patches[app.id] || {}).employerCity ?? ""}
+                          onChange={(e) => setPatch(app.id, "employerCity", e.target.value)}
+                          className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-yellow-500"
+                        />
+                        <input
+                          placeholder="State (e.g. FL)"
+                          value={(patches[app.id] || {}).employerState ?? ""}
+                          onChange={(e) => setPatch(app.id, "employerState", e.target.value)}
+                          className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-yellow-500"
+                        />
+                        <input
+                          placeholder="ZIP"
+                          value={(patches[app.id] || {}).employerZip ?? ""}
+                          onChange={(e) => setPatch(app.id, "employerZip", e.target.value)}
+                          className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-sm placeholder-zinc-500 focus:outline-none focus:border-yellow-500"
+                        />
                       </div>
                     </div>
 
