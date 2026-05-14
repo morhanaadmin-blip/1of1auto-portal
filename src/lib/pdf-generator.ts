@@ -3,18 +3,53 @@ import * as fs from "fs";
 import * as path from "path";
 import type { ApplicationData, PersonData, BusinessData } from "./types";
 
-// ─── Colors & Layout ────────────────────────────────────────────────────────
-const GOLD   = "#C9A84C";
-const DARK   = "#111111";
-const GRAY   = "#666666";
-const LGRAY  = "#CCCCCC";
-const PW     = 612;                     // letter width (pt)
-const MARGIN = 40;
-const CW     = PW - MARGIN * 2;        // content width: 532
-const COL_W  = (CW - 14) / 2;         // ~259 per column
-const COL2_X = MARGIN + COL_W + 14;   // right column x
+// ─── Colors ───────────────────────────────────────────────────────────────────
+const GOLD  = "#C9A84C";
+const DARK  = "#111111";
+const GRAY  = "#666666";
+const LGRAY = "#CCCCCC";
 
-// ─── Format Helpers ──────────────────────────────────────────────────────────
+// ─── Page & Grid Constants ────────────────────────────────────────────────────
+const PW     = 612;                          // letter width (pt)
+const MARGIN = 40;
+const CW     = PW - MARGIN * 2;             // 532 pt content width
+const ROW_H  = 30;                          // height per field row
+const GAP    = 10;                          // gap between columns
+
+// 2-column layout
+const C2 = Math.floor((CW - GAP) / 2);     // 261
+const X2 = [MARGIN, MARGIN + C2 + GAP] as const;  // [40, 311]
+
+// 4-column layout (equal)
+const C4 = Math.floor((CW - 3 * GAP) / 4); // 125
+const X4 = [
+  MARGIN,
+  MARGIN + C4 + GAP,
+  MARGIN + 2 * (C4 + GAP),
+  MARGIN + 3 * (C4 + GAP),
+] as const; // [40, 175, 310, 445]
+// Last col picks up any rounding remainder
+const C4_LAST = CW - 3 * (C4 + GAP);       // 127
+
+// 3-column layout (equal)
+const C3 = Math.floor((CW - 2 * GAP) / 3); // 170
+const X3 = [
+  MARGIN,
+  MARGIN + C3 + GAP,
+  MARGIN + 2 * (C3 + GAP),
+] as const; // [40, 220, 400]
+const C3_LAST = CW - 2 * (C3 + GAP);       // 172
+
+// Asymmetric columns — Name / DOB / SSN row
+const NAME_W = 238;
+const DOB_W  = 138;
+const SSN_W  = CW - NAME_W - DOB_W - 2 * GAP;  // 136
+
+// Employer Tel / Address row
+const TEL_W  = 140;
+const ADDR_W = CW - TEL_W - GAP;               // 382
+
+// ─── Format Helpers ───────────────────────────────────────────────────────────
 function fPhone(v: string): string {
   const c = v?.replace(/\D/g, "") ?? "";
   return c.length === 10 ? `${c.slice(0,3)}-${c.slice(3,6)}-${c.slice(6)}` : (v || "—");
@@ -49,37 +84,53 @@ function val(v: string | undefined | null): string {
   return v && v.trim() ? v.trim() : "—";
 }
 
-// ─── Drawing Primitives ──────────────────────────────────────────────────────
+// ─── Drawing Primitives ───────────────────────────────────────────────────────
 type Doc = InstanceType<typeof PDFDocument>;
 
-/** Draws a field (label above value). Returns y-position after field. */
-function field(doc: Doc, label: string, value: string, x: number, y: number, w: number): number {
-  doc.font("Helvetica").fontSize(7).fillColor(GRAY)
-    .text(label, x, y, { width: w, lineBreak: false });
-  const vy = doc.y + 1;
-  doc.font("Helvetica").fontSize(10).fillColor(DARK)
-    .text(value || "—", x, vy, { width: w });
-  return doc.y + 4;
+/**
+ * Draw a single form field at absolute (x, y) with given width.
+ * Renders: small gray LABEL → VALUE → underline.
+ * Does NOT advance doc.y — caller manages y with ROW_H.
+ */
+function formField(doc: Doc, label: string, value: string, x: number, y: number, w: number): void {
+  // Label
+  doc.font("Helvetica").fontSize(6.5).fillColor(GRAY)
+    .text(label, x + 1, y, { width: w - 1, lineBreak: false });
+  // Value
+  doc.font("Helvetica").fontSize(9.5).fillColor(DARK)
+    .text(value || "—", x + 1, y + 9, { width: w - 1, lineBreak: false });
+  // Underline beneath value
+  doc.moveTo(x, y + 22)
+    .lineTo(x + w, y + 22)
+    .strokeColor(LGRAY).lineWidth(0.4).stroke();
 }
 
-/** Two-column field row. Returns new y. */
-function row(
-  doc: Doc, y: number,
-  lLabel: string, lVal: string,
-  rLabel = "", rVal = ""
-): number {
-  const leftEnd = field(doc, lLabel, lVal, MARGIN, y, COL_W);
-  const rightEnd = rLabel ? field(doc, rLabel, rVal, COL2_X, y, COL_W) : leftEnd;
-  const bottom = Math.max(leftEnd, rightEnd);
-  doc.y = bottom;
-  return bottom;
+/** Gold section header with top rule. Returns y after header. */
+function sectionHeader(doc: Doc, y: number, title: string): number {
+  doc.moveTo(MARGIN, y + 1).lineTo(PW - MARGIN, y + 1)
+    .strokeColor(GOLD).lineWidth(1.2).stroke();
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(GOLD)
+    .text(title, MARGIN, y + 5, { width: CW, lineBreak: false });
+  return y + 20;
 }
 
-/** Full-width single field row. Returns new y. */
-function rowFull(doc: Doc, y: number, label: string, value: string): number {
-  const end = field(doc, label, value, MARGIN, y, CW);
-  doc.y = end;
-  return end;
+/** Light gray sub-section divider. Returns y after header. */
+function subHeader(doc: Doc, y: number, title: string): number {
+  doc.moveTo(MARGIN, y).lineTo(PW - MARGIN, y)
+    .strokeColor(LGRAY).lineWidth(0.5).stroke();
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(GRAY)
+    .text(title, MARGIN, y + 3, { width: CW, lineBreak: false });
+  return y + 17;
+}
+
+/** Check if we need a page break; inserts one if so. Returns current y. */
+function checkY(doc: Doc, y: number, needed = 40): number {
+  if (y + needed > 748) {
+    drawFooter(doc);
+    doc.addPage();
+    return 48;
+  }
+  return y;
 }
 
 /** Gold horizontal rule. */
@@ -94,29 +145,7 @@ function lightRule(doc: Doc, y: number) {
     .strokeColor(LGRAY).lineWidth(0.4).stroke();
 }
 
-/** Bold section header with gold underline. Returns new y. */
-function sectionHeader(doc: Doc, y: number, title: string): number {
-  const yy = y + 6;
-  doc.font("Helvetica-Bold").fontSize(9).fillColor(GOLD)
-    .text(title, MARGIN, yy, { width: CW });
-  const lineY = doc.y + 1;
-  doc.moveTo(MARGIN, lineY).lineTo(PW - MARGIN, lineY)
-    .strokeColor(GOLD).lineWidth(0.5).stroke();
-  doc.y = lineY + 8;
-  return doc.y;
-}
-
-/** Check if near page bottom; add page if so. Returns current y. */
-function checkPage(doc: Doc): number {
-  if (doc.y > 700) {
-    drawFooter(doc);
-    doc.addPage();
-    // pdfkit resets cursor to top of new page automatically
-  }
-  return doc.y;
-}
-
-// ─── Agreement Text (verbatim from PageAgreement.tsx) ─────────────────────
+// ─── Agreement Text (verbatim from PageAgreement.tsx) ─────────────────────────
 const AGREEMENT_CLAUSES = [
   {
     title: "Your broker",
@@ -140,123 +169,233 @@ const AGREEMENT_CLAUSES = [
   },
 ];
 
-// ─── Section Renderers ───────────────────────────────────────────────────────
+// ─── Section Renderers ────────────────────────────────────────────────────────
 
 function drawPersonSection(doc: Doc, p: PersonData, title: string): number {
-  let y = checkPage(doc);
+  let y = doc.y;
+
+  // Personal Info header
+  y = checkY(doc, y, 160);
   y = sectionHeader(doc, y, title);
 
+  // Row 1: Full Name | Date of Birth | Social Security No.
+  y = checkY(doc, y, ROW_H);
   const name = [p.firstName, p.middleName, p.lastName].filter(Boolean).join(" ");
-  y = row(doc, y, "Full Name", val(name), "Date of Birth", fDate(p.dob));
-  y = row(doc, y, "Social Security Number", p.ssn ? fSSN(p.ssn) : "—", "Cell Phone", p.phone ? fPhone(p.phone) : "—");
-  y = rowFull(doc, y, "Email Address", val(p.email));
-  y = rowFull(doc, y, "Home Address (as on Driver's License)", val(p.licenseAddress));
+  formField(doc, "Full Name", val(name),                          MARGIN, y, NAME_W);
+  formField(doc, "Date of Birth", fDate(p.dob),                  MARGIN + NAME_W + GAP, y, DOB_W);
+  formField(doc, "Social Security No.", p.ssn ? fSSN(p.ssn) : "—",  MARGIN + NAME_W + DOB_W + 2 * GAP, y, SSN_W);
+  y += ROW_H;
 
+  // Row 2: Cell Phone | Email Address
+  y = checkY(doc, y, ROW_H);
+  formField(doc, "Cell Phone", p.phone ? fPhone(p.phone) : "—",  X2[0], y, C2);
+  formField(doc, "Email Address", val(p.email),                  X2[1], y, C2);
+  y += ROW_H;
+
+  // Row 3: Home Address (full width)
+  y = checkY(doc, y, ROW_H);
+  formField(doc, "Home Address — as on Driver's License", val(p.licenseAddress), MARGIN, y, CW);
+  y += ROW_H;
+
+  // Row 4 (conditional): Registering Address
   if (p.registeringAddressSame === false && p.registeringAddress) {
-    y = rowFull(doc, y, "Registering Address (different from DL)", val(p.registeringAddress));
+    y = checkY(doc, y, ROW_H);
+    formField(doc, "Registering Address (different from above)", val(p.registeringAddress), MARGIN, y, CW);
+    y += ROW_H;
   }
 
-  const timeAt = [p.yearsAtAddress && `${p.yearsAtAddress} yr`, p.monthsAtAddress && `${p.monthsAtAddress} mo`]
-    .filter(Boolean).join(" ") || "—";
-  y = row(doc, y, "Time at Address", timeAt, "Housing Status", fHousing(p.housingStatus));
-  y = row(doc, y, "Monthly Housing Payment", p.monthlyHousingPayment ? fMoney(p.monthlyHousingPayment) : "—",
-    "Annual Income", p.annualIncome ? fMoney(p.annualIncome) : "—");
+  // Row 4/5: Time at Address | Housing Status | Monthly Housing Payment | Annual Income
+  y = checkY(doc, y, ROW_H);
+  const timeAt = [
+    p.yearsAtAddress  && `${p.yearsAtAddress} yr`,
+    p.monthsAtAddress && `${p.monthsAtAddress} mo`,
+  ].filter(Boolean).join(" ") || "—";
+  formField(doc, "Time at Address",        timeAt,                                      X4[0], y, C4);
+  formField(doc, "Housing Status",         fHousing(p.housingStatus),                   X4[1], y, C4);
+  formField(doc, "Mo. Housing Payment",    p.monthlyHousingPayment ? fMoney(p.monthlyHousingPayment) : "—", X4[2], y, C4);
+  formField(doc, "Annual Income",          p.annualIncome ? fMoney(p.annualIncome) : "—", X4[3], y, C4_LAST);
+  y += ROW_H;
 
-  y = row(doc, y, "Occupation", val(p.occupation), "Employer Name", val(p.employerName));
+  // Row 5: Monthly Income
+  y = checkY(doc, y, ROW_H + 10);
+  formField(doc, "Monthly Income", p.monthlyIncome ? fMoney(p.monthlyIncome) : "—", X2[0], y, C2);
+  y += ROW_H + 6;
 
+  // Employment sub-section — check for enough space to keep it together
+  y = checkY(doc, y, 130);
+  y = subHeader(doc, y, "EMPLOYMENT");
+
+  // Row E1: Occupation | Employer Name
+  y = checkY(doc, y, ROW_H);
+  formField(doc, "Occupation",    val(p.occupation),    X2[0], y, C2);
+  formField(doc, "Employer Name", val(p.employerName),  X2[1], y, C2);
+  y += ROW_H;
+
+  // Row E2: Employer Tel. | Employer Address
+  y = checkY(doc, y, ROW_H);
   const empPhone = p.employerPhone ? fPhone(p.employerPhone) : "—";
-  const empAddr = [p.employerStreet, p.employerCity, p.employerState, p.employerZip]
+  const empAddr  = [p.employerStreet, p.employerCity, p.employerState, p.employerZip]
     .filter(Boolean).join(", ") || "—";
-  y = row(doc, y, "Employer Tel.", empPhone, "Employer Address", empAddr);
+  formField(doc, "Employer Tel.",     empPhone, MARGIN,            y, TEL_W);
+  formField(doc, "Employer Address",  empAddr,  MARGIN + TEL_W + GAP, y, ADDR_W);
+  y += ROW_H;
 
-  const timeWorked = [p.yearsWorked && `${p.yearsWorked} yr`, p.monthsWorked && `${p.monthsWorked} mo`]
-    .filter(Boolean).join(" ") || "—";
-  y = row(doc, y, "Time with Employer", timeWorked, "", "");
+  // Row E3: Time with Employer
+  y = checkY(doc, y, ROW_H);
+  const timeWorked = [
+    p.yearsWorked  && `${p.yearsWorked} yr`,
+    p.monthsWorked && `${p.monthsWorked} mo`,
+  ].filter(Boolean).join(" ") || "—";
+  formField(doc, "Time with Employer", timeWorked, X2[0], y, C2);
+  y += ROW_H + 4;
 
   doc.y = y;
   return y;
 }
 
 function drawBusinessSection(doc: Doc, b: BusinessData): number {
-  let y = checkPage(doc);
+  let y = doc.y;
+  y = checkY(doc, y, 200);
   y = sectionHeader(doc, y, "BUSINESS INFORMATION");
 
-  y = row(doc, y, "Legal Business Name", val(b.legalName), "Tax ID (EIN)", b.ein ? fEIN(b.ein) : "—");
-  y = row(doc, y, "Title / Role", val(b.title), "% Ownership", b.ownershipPercent ? `${b.ownershipPercent}%` : "—");
-  y = row(doc, y, "Business Phone", b.phone ? fPhone(b.phone) : "—", "Date Business Established", fDate(b.establishedDate));
-  y = row(doc, y, "State of Incorporation", val(b.stateOfIncorporation), "Years in Business", val(b.yearsInBusiness));
-  y = row(doc, y, "Number of Employees", val(b.numEmployees), "", "");
+  // Row 1: Legal Business Name | Tax ID (EIN)
+  y = checkY(doc, y, ROW_H);
+  const bizNameW = Math.round(CW * 0.62);   // 330
+  const einW     = CW - bizNameW - GAP;     // 192
+  formField(doc, "Legal Business Name", val(b.legalName), MARGIN, y, bizNameW);
+  formField(doc, "Tax ID (EIN)", b.ein ? fEIN(b.ein) : "—", MARGIN + bizNameW + GAP, y, einW);
+  y += ROW_H;
 
-  const bizAddr = [b.address, b.suite && `Suite ${b.suite}`, b.city, b.state, b.zip]
-    .filter(Boolean).join(", ") || "—";
-  y = rowFull(doc, y, "Business Address", bizAddr);
-  if (b.poBox) y = rowFull(doc, y, "P.O. Box", b.poBox);
+  // Row 2: Business Address | Business Phone
+  y = checkY(doc, y, ROW_H);
+  const addrW2 = Math.round(CW * 0.62);
+  const phoneW = CW - addrW2 - GAP;
+  const bizAddrStreet = [b.address, b.suite && `Suite ${b.suite}`].filter(Boolean).join(", ");
+  formField(doc, "Business Address",  val(bizAddrStreet),            MARGIN, y, addrW2);
+  formField(doc, "Business Phone",    b.phone ? fPhone(b.phone) : "—", MARGIN + addrW2 + GAP, y, phoneW);
+  y += ROW_H;
+
+  // Row 3: City | State | ZIP | Date Established
+  y = checkY(doc, y, ROW_H);
+  const cityW  = 180;
+  const stateW = 80;
+  const zipW   = 80;
+  const estW   = CW - cityW - stateW - zipW - 3 * GAP;  // 162
+  formField(doc, "City",               val(b.city),             MARGIN, y, cityW);
+  formField(doc, "State",              val(b.state),            MARGIN + cityW + GAP, y, stateW);
+  formField(doc, "ZIP",                val(b.zip),              MARGIN + cityW + stateW + 2*GAP, y, zipW);
+  formField(doc, "Date Established",   fDate(b.establishedDate), MARGIN + cityW + stateW + zipW + 3*GAP, y, estW);
+  y += ROW_H;
+
+  // Row 4: Title / Role | % Ownership | State of Incorporation
+  y = checkY(doc, y, ROW_H);
+  formField(doc, "Title / Role",            val(b.title),           X3[0], y, C3);
+  formField(doc, "% Ownership",             b.ownershipPercent ? `${b.ownershipPercent}%` : "—", X3[1], y, C3);
+  formField(doc, "State of Incorporation",  val(b.stateOfIncorporation), X3[2], y, C3_LAST);
+  y += ROW_H;
+
+  // Row 5: Years in Business | No. of Employees | P.O. Box
+  y = checkY(doc, y, ROW_H);
+  formField(doc, "Years in Business", val(b.yearsInBusiness), X3[0], y, C3);
+  formField(doc, "No. of Employees",  val(b.numEmployees),    X3[1], y, C3);
+  if (b.poBox) formField(doc, "P.O. Box", val(b.poBox),       X3[2], y, C3_LAST);
+  y += ROW_H + 4;
 
   // Banking sub-section
-  y = checkPage(doc);
-  y = sectionHeader(doc, y + 4, "BANKING INFORMATION");
-  y = row(doc, y, "Bank Name", val(b.bankName), "Checking Account #", val(b.bankAccountNumber));
-  y = row(doc, y, "Contact at Bank", val(b.bankContactName), "Contact Phone",
-    b.bankContactPhone ? fPhone(b.bankContactPhone) : "—");
+  y = checkY(doc, y, 100);
+  y = subHeader(doc, y, "BANKING INFORMATION");
+
+  // Row B1: Bank Name | Checking Account #
+  y = checkY(doc, y, ROW_H);
+  formField(doc, "Bank Name",         val(b.bankName),          MARGIN, y, Math.round(CW * 0.62));
+  formField(doc, "Checking Account #", val(b.bankAccountNumber), MARGIN + Math.round(CW * 0.62) + GAP, y, CW - Math.round(CW * 0.62) - GAP);
+  y += ROW_H;
+
+  // Row B2: Contact Name | Contact Phone
+  y = checkY(doc, y, ROW_H);
+  formField(doc, "Contact at Bank",   val(b.bankContactName),  X2[0], y, C2);
+  formField(doc, "Contact Phone",     b.bankContactPhone ? fPhone(b.bankContactPhone) : "—", X2[1], y, C2);
+  y += ROW_H + 4;
 
   doc.y = y;
   return y;
 }
 
 function drawAgreementSection(doc: Doc, application: ApplicationData): number {
-  let y = checkPage(doc);
+  let y = doc.y;
+  y = checkY(doc, y, 100);
   y = sectionHeader(doc, y, "AGREEMENT");
 
   for (const clause of AGREEMENT_CLAUSES) {
-    y = checkPage(doc);
-    doc.font("Helvetica-Bold").fontSize(8).fillColor(DARK)
-      .text(`${clause.title} — `, MARGIN, y, { continued: true, width: CW });
-    doc.font("Helvetica").fontSize(8).fillColor(GRAY)
-      .text(clause.body, { continued: false });
+    y = checkY(doc, y, 30);
+    doc.font("Helvetica-Bold").fontSize(7.5).fillColor(DARK)
+      .text(`${clause.title} \u2014 `, MARGIN, y, { continued: true, width: CW });
+    doc.font("Helvetica").fontSize(7.5).fillColor(GRAY)
+      .text(clause.body, { continued: false, width: CW });
     y = doc.y + 4;
   }
 
-  // Signatures
-  y = checkPage(doc);
-  y += 10;
+  y += 12;
 
-  const SIG_W = 220;
-  const SIG_H = 65;
+  const SIG_W  = 210;
+  const SIG_H  = 60;
   const sigData = application.agreement.signatureData;
+  const dateStr = new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
 
-  // Draw applicant signature
-  if (sigData) {
-    try {
-      const buf = Buffer.from(sigData.replace(/^data:image\/\w+;base64,/, ""), "base64");
-      doc.image(buf, MARGIN, y, { width: SIG_W, height: SIG_H, fit: [SIG_W, SIG_H] });
-    } catch { /* signature not renderable */ }
-  }
-
-  const sigLineY = y + SIG_H + 2;
-  lightRule(doc, sigLineY);
-  const sigLabel = application.mode === "business"
-    ? `Guarantor: ${application.primary.firstName} ${application.primary.lastName}`
-    : `Applicant: ${application.primary.firstName} ${application.primary.lastName}`;
-  doc.font("Helvetica").fontSize(7).fillColor(GRAY)
-    .text(`${sigLabel}     Date: ${new Date().toLocaleDateString()}`, MARGIN, sigLineY + 3, { width: SIG_W });
-
-  // Co-applicant signature line (same signature data, or blank)
-  if (application.mode === "co-applicant" && application.coApplicant) {
-    if (sigData) {
+  function drawSigBlock(sigX: number, label: string, date: string, useSig: boolean): void {
+    if (useSig && sigData) {
       try {
         const buf = Buffer.from(sigData.replace(/^data:image\/\w+;base64,/, ""), "base64");
-        doc.image(buf, COL2_X, y, { width: SIG_W, height: SIG_H, fit: [SIG_W, SIG_H] });
-      } catch { /* skip */ }
+        doc.image(buf, sigX, y, { fit: [SIG_W, SIG_H] });
+      } catch { /* not renderable */ }
     }
-    doc.moveTo(COL2_X, sigLineY).lineTo(COL2_X + SIG_W, sigLineY)
+    const lineY = y + SIG_H + 3;
+    doc.moveTo(sigX, lineY).lineTo(sigX + SIG_W, lineY)
       .strokeColor(LGRAY).lineWidth(0.4).stroke();
-    const coName = `${application.coApplicant.firstName} ${application.coApplicant.lastName}`;
     doc.font("Helvetica").fontSize(7).fillColor(GRAY)
-      .text(`Co-Applicant: ${coName}     Date: ${new Date().toLocaleDateString()}`,
-        COL2_X, sigLineY + 3, { width: SIG_W });
+      .text(`${label}     Date: ${date}`, sigX, lineY + 3, { width: SIG_W, lineBreak: false });
   }
 
-  y = sigLineY + 22;
+  if (application.mode === "co-applicant" && application.coApplicant) {
+    // Two side-by-side signature blocks
+    y = checkY(doc, y, SIG_H + 30);
+    const coName = `${application.coApplicant.firstName} ${application.coApplicant.lastName}`;
+    drawSigBlock(X2[0], `Applicant: ${application.primary.firstName} ${application.primary.lastName}`, dateStr, true);
+    drawSigBlock(X2[1], `Co-Applicant: ${coName}`, dateStr, true);
+    y = y + SIG_H + 22;
+
+  } else if (application.mode === "business") {
+    // Guarantor personal signature
+    y = checkY(doc, y, SIG_H + 30);
+    drawSigBlock(MARGIN, `Guarantor: ${application.primary.firstName} ${application.primary.lastName}`, dateStr, true);
+    y = y + SIG_H + 22;
+
+    // Corporate authorized signatory block (blank — for dealer/lender use)
+    y = checkY(doc, y, 55);
+    doc.font("Helvetica-Bold").fontSize(7).fillColor(GRAY)
+      .text("AUTHORIZED BUSINESS SIGNATORY", MARGIN, y, { lineBreak: false });
+    y += 12;
+    const authSigW = 240;
+    const authTitleW = CW - authSigW - GAP;
+    doc.moveTo(MARGIN, y + 14).lineTo(MARGIN + authSigW, y + 14).strokeColor(LGRAY).lineWidth(0.4).stroke();
+    doc.moveTo(MARGIN + authSigW + GAP, y + 14).lineTo(MARGIN + authSigW + GAP + authTitleW, y + 14).strokeColor(LGRAY).lineWidth(0.4).stroke();
+    doc.font("Helvetica").fontSize(6.5).fillColor(GRAY)
+      .text("Authorized Signature", MARGIN, y + 16, { lineBreak: false });
+    doc.font("Helvetica").fontSize(6.5).fillColor(GRAY)
+      .text("Title", MARGIN + authSigW + GAP, y + 16, { lineBreak: false });
+    y += 32;
+    doc.moveTo(MARGIN, y + 14).lineTo(MARGIN + 180, y + 14).strokeColor(LGRAY).lineWidth(0.4).stroke();
+    doc.font("Helvetica").fontSize(6.5).fillColor(GRAY)
+      .text("Date", MARGIN, y + 16, { lineBreak: false });
+    y += 22;
+
+  } else {
+    // Individual: single signature block
+    y = checkY(doc, y, SIG_H + 30);
+    drawSigBlock(MARGIN, `Applicant: ${application.primary.firstName} ${application.primary.lastName}`, dateStr, true);
+    y = y + SIG_H + 22;
+  }
+
   doc.y = y;
   return y;
 }
@@ -269,14 +408,17 @@ function drawHeader(doc: Doc): number {
     try {
       const logoPath = path.join(process.cwd(), "public", name);
       if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, PW / 2 - 110, 22, { fit: [220, 60] });
+        // Logo is a square PNG — use `width` (not `fit`) so rendered size
+        // matches the centered x position exactly.
+        const logoSize = 105;
+        doc.image(logoPath, PW / 2 - logoSize / 2, 14, { width: logoSize });
         logoDrawn = true;
         break;
       }
     } catch { /* try next */ }
   }
 
-  const titleY = logoDrawn ? 90 : 28;
+  const titleY = logoDrawn ? 126 : 28;
 
   if (!logoDrawn) {
     doc.font("Helvetica-Bold").fontSize(20).fillColor(GOLD)
@@ -299,7 +441,6 @@ function drawHeader(doc: Doc): number {
 function drawFooter(doc: Doc) {
   const y = 756;
   goldRule(doc, y - 5);
-  // lineBreak: false prevents text overflow from triggering a new page (avoids pageAdded loop)
   doc.font("Helvetica").fontSize(7).fillColor(GRAY)
     .text(
       "1 OF 1 AUTO INC.   \u2022   3113 Stirling Rd. (Suite 203), Fort Lauderdale, FL 33312   \u2022   Oneofoneauto@gmail.com   \u2022   954-770-1177",
@@ -307,14 +448,13 @@ function drawFooter(doc: Doc) {
     );
 }
 
-// ─── Main Export ─────────────────────────────────────────────────────────────
+// ─── Main Export ──────────────────────────────────────────────────────────────
 
 export async function generateApplicationPDF(application: ApplicationData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "letter",
       autoFirstPage: true,
-      // bottom: 0 so we can draw the footer at y=756 without pdfkit auto-creating a new page
       margins: { top: MARGIN, left: MARGIN, right: MARGIN, bottom: 0 },
     });
     const buffers: Buffer[] = [];
@@ -322,41 +462,37 @@ export async function generateApplicationPDF(application: ApplicationData): Prom
     doc.on("end", () => resolve(Buffer.concat(buffers)));
     doc.on("error", reject);
 
-    // Header
     drawHeader(doc);
 
     const mode = application.mode;
 
     if (mode === "business" && application.business) {
-      // Business application + guarantor (primary = guarantor)
       drawBusinessSection(doc, application.business);
       doc.y += 6;
       lightRule(doc, doc.y);
+      doc.y += 8;
       drawPersonSection(doc, application.primary, "GUARANTOR INFORMATION");
     } else if (mode === "co-applicant" && application.coApplicant) {
-      // Individual + co-applicant
       drawPersonSection(doc, application.primary, "APPLICANT INFORMATION");
       doc.y += 6;
       lightRule(doc, doc.y);
+      doc.y += 8;
       drawPersonSection(doc, application.coApplicant, "CO-APPLICANT INFORMATION");
     } else {
-      // Individual only
       drawPersonSection(doc, application.primary, "APPLICANT INFORMATION");
     }
 
-    // Agreement + signatures
     doc.y += 6;
     lightRule(doc, doc.y);
+    doc.y += 8;
     drawAgreementSection(doc, application);
 
-    // Footer on first page (pageAdded fires for additional pages only)
     drawFooter(doc);
-
     doc.end();
   });
 }
 
-// ─── Agreement PDF (standalone) ──────────────────────────────────────────────
+// ─── Agreement PDF (standalone) ───────────────────────────────────────────────
 
 export async function generateAgreementPDF(
   applicantName: string,
@@ -369,7 +505,6 @@ export async function generateAgreementPDF(
     doc.on("end", () => resolve(Buffer.concat(buffers)));
     doc.on("error", reject);
 
-    // Header
     doc.font("Helvetica-Bold").fontSize(16).fillColor(DARK)
       .text("1 OF 1 AUTO INC.", MARGIN, 36, { align: "center", width: CW });
     doc.font("Helvetica").fontSize(11).fillColor(GRAY)
@@ -377,7 +512,6 @@ export async function generateAgreementPDF(
     goldRule(doc, doc.y + 8);
     doc.y = doc.y + 20;
 
-    // Agreement clauses
     for (const clause of AGREEMENT_CLAUSES) {
       doc.font("Helvetica-Bold").fontSize(9).fillColor(DARK)
         .text(`${clause.title} — `, MARGIN, doc.y, { continued: true, width: CW });
@@ -388,7 +522,6 @@ export async function generateAgreementPDF(
 
     doc.moveDown(1);
 
-    // Signature
     if (signatureDataUrl) {
       try {
         const buf = Buffer.from(signatureDataUrl.replace(/^data:image\/\w+;base64,/, ""), "base64");
@@ -401,13 +534,12 @@ export async function generateAgreementPDF(
       .text(`Applicant: ${applicantName}     Date: ${new Date().toLocaleDateString()}`,
         MARGIN, sigLineY + 4, { width: 300 });
 
-    // Footer
     drawFooter(doc);
     doc.end();
   });
 }
 
-// ─── Charge Confirmation PDF ──────────────────────────────────────────────────
+// ─── Charge Confirmation PDF ───────────────────────────────────────────────────
 
 export async function generateChargeConfirmationPDF(
   applicantName: string,

@@ -312,19 +312,19 @@ async function sendTelegramNotification(
   files: { field: string; name: string }[],
   storagePath: string
 ) {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
   if (!botToken || !chatId) return;
 
   const p = app.primary;
   const lines = [
-    `🚗 *New 1OF1 Application*`,
+    `🚗 NEW 1OF1 APPLICATION`,
     ``,
-    `*${p.firstName} ${p.middleName} ${p.lastName}*`,
+    `${p.firstName} ${p.middleName} ${p.lastName}`,
     `📧 ${p.email}`,
     `📱 ${p.phone}`,
     `🎂 ${p.dob}`,
-    `🔒 SSN: ${p.ssn || "Not provided"}`,
+    `🔒 SSN: ${p.ssn ? `***-**-${p.ssn.replace(/\D/g, "").slice(-4)}` : "Not provided"}`,
     ``,
     `📍 License: ${p.licenseAddress || "—"}`,
     p.registeringAddressSame === false
@@ -340,19 +340,34 @@ async function sendTelegramNotification(
 
   if (app.mode === "co-applicant" && app.coApplicant) {
     const c = app.coApplicant;
-    lines.push(``, `*Co-Applicant: ${c.firstName} ${c.lastName}*`);
+    lines.push(``, `CO-APPLICANT: ${c.firstName} ${c.lastName}`);
     lines.push(`💼 ${c.occupation} at ${c.employerName}`);
     lines.push(`💰 $${c.annualIncome}/yr`);
   }
 
   if (app.mode === "business" && app.business) {
     const b = app.business;
-    lines.push(``, `*Business: ${b.legalName}*`);
+    lines.push(``, `BUSINESS: ${b.legalName}`);
     lines.push(`📱 ${b.phone || "—"}`);
     lines.push(`📍 ${[b.address, b.suite, b.city, b.state, b.zip].filter(Boolean).join(", ")}`);
     lines.push(`🏢 ${b.title} · ${b.ownershipPercent}% ownership`);
     lines.push(`📋 EIN: ${b.ein} · ${b.yearsInBusiness}yrs in business`);
     lines.push(`🏦 Bank: ${b.bankName}`);
+  }
+
+  // Missing fields check
+  const missing: string[] = [];
+  if (!p.ssn) missing.push("Primary SSN");
+  if (p.employerName && !p.employerStreet) missing.push("Primary employer address");
+  if (!p.employerName && !p.occupation) missing.push("Primary occupation / employer");
+  if (app.mode === "co-applicant" && app.coApplicant) {
+    const c = app.coApplicant;
+    if (!c.ssn) missing.push("Co-applicant SSN");
+    if (c.employerName && !c.employerStreet) missing.push("Co-applicant employer address");
+  }
+  if (missing.length > 0) {
+    lines.push(``, `⚠️ MISSING — follow up before lender submission:`);
+    missing.forEach((f) => lines.push(`  • ${f}`));
   }
 
   lines.push(``, `📎 Docs: ${files.length} files uploaded`);
@@ -362,16 +377,19 @@ async function sendTelegramNotification(
   lines.push(``, `📞 Contact: 1 OF 1 AUTO Representative · 954-770-1177`);
 
   try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
         text: lines.join("\n"),
-        parse_mode: "Markdown",
       }),
     });
-  } catch {
-    console.error("Telegram notification failed");
+    const result = await res.json();
+    if (!result.ok) {
+      console.error("Telegram notification failed:", result.description);
+    }
+  } catch (err) {
+    console.error("Telegram notification error:", err);
   }
 }

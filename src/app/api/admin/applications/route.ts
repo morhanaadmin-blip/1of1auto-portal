@@ -44,6 +44,17 @@ export async function GET(req: NextRequest) {
     const primary = app?.primary || {};
     const isPaid = row.stripe_session_id && row.stripe_session_id !== "test_mode";
 
+    // Compute missing fields required by lenders
+    const missingFields: string[] = [];
+    if (!primary.ssn) missingFields.push("Primary SSN");
+    if (primary.employerName && !primary.employerStreet) missingFields.push("Primary employer address");
+    if (!primary.employerName && !primary.occupation) missingFields.push("Primary occupation / employer");
+    if (app?.mode === "co-applicant" && app?.coApplicant) {
+      const c = app.coApplicant;
+      if (!c.ssn) missingFields.push("Co-applicant SSN");
+      if (c.employerName && !c.employerStreet) missingFields.push("Co-applicant employer address");
+    }
+
     return {
       id: row.id,
       createdAt: row.created_at,
@@ -53,6 +64,7 @@ export async function GET(req: NextRequest) {
       status: row.status,
       isPaid,
       stripeSession: row.stripe_session_id,
+      missingFields,
       // Applicant details from JSON
       firstName: primary.firstName || "",
       lastName: primary.lastName || "",

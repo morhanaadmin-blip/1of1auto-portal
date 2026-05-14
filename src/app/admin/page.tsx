@@ -24,6 +24,7 @@ interface Application {
   status: string;
   isPaid: boolean;
   stripeSession: string;
+  missingFields: string[];
   firstName: string;
   lastName: string;
   ssn: string | null;
@@ -191,6 +192,7 @@ export default function AdminPage() {
           {displayed.map((app) => {
             const isOpen = expanded.has(app.id);
             const fileCount = Object.values(app.files).filter(Boolean).length;
+            const hasMissing = (app.missingFields || []).length > 0;
             const date = new Date(app.createdAt).toLocaleDateString("en-US", {
               month: "short", day: "numeric", year: "numeric",
             });
@@ -210,8 +212,13 @@ export default function AdminPage() {
                   <div className="flex items-center gap-3">
                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ${app.isPaid ? "bg-green-500" : "bg-zinc-600"}`} />
                     <div>
-                      <div className="font-semibold text-white capitalize">
+                      <div className="font-semibold text-white capitalize flex items-center gap-2">
                         {app.customerName?.replace(/-/g, " ")}
+                        {hasMissing && (
+                          <span className="text-[10px] font-semibold bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 rounded px-1.5 py-0.5">
+                            ⚠️ {app.missingFields.length} missing
+                          </span>
+                        )}
                       </div>
                       <div className="text-zinc-400 text-xs mt-0.5">
                         {date} · {fileCount} file{fileCount !== 1 ? "s" : ""} · {app.isPaid ? "Paid $99" : "Test"}
@@ -245,6 +252,18 @@ export default function AdminPage() {
                         <div className="text-zinc-400">🎂 DOB: {app.dob}</div>
                       )}
                     </div>
+
+                    {/* Missing fields warning */}
+                    {hasMissing && (
+                      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2.5">
+                        <div className="text-yellow-400 text-xs font-semibold uppercase tracking-wide mb-1.5">⚠️ Missing — follow up before sending to lender</div>
+                        <ul className="space-y-0.5">
+                          {app.missingFields.map((f) => (
+                            <li key={f} className="text-yellow-300 text-xs">• {f}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
                     {/* Files */}
                     <div className="space-y-2">
