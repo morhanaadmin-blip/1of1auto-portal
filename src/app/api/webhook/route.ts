@@ -49,6 +49,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ url: session.url });
     }
 
+    // Stripe webhook events (checkout.session.completed, etc.) — acknowledge receipt
+    if (body.type && body.id && body.object === "event") {
+      return NextResponse.json({ received: true });
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
