@@ -2,6 +2,14 @@
 
 export type HousingStatus = "own" | "mortgage" | "rent" | "family" | "other";
 export type ApplicationMode = "individual" | "co-applicant" | "business";
+export type CoAppRelationship = "spouse" | "relative" | "partner" | "other";
+
+export type CoAppInviteState = {
+  token: string;          // unique invite token returned by /api/coapp/invite
+  link: string;           // full URL the SMS/QR points to
+  phone: string;          // digits-only phone the link was sent to
+  relationship: CoAppRelationship | "";
+};
 
 export type PersonData = {
   // From DL OCR
@@ -125,6 +133,10 @@ export type ApplicationData = {
   agreement: AgreementData;
   depositPaid: boolean;
   stripeSessionId: string;
+  // Present when mode === "co-applicant" and the primary has dispatched the remote invite.
+  // The co-applicant submits their portion via /apply/coapp/[token]; /api/submit reads
+  // this token and merges any already-submitted co-app data at primary submit time.
+  coAppInvite?: CoAppInviteState;
   _staged?: StagedFiles;
 };
 

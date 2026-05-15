@@ -5,7 +5,7 @@ import {
   generateAgreementPDF,
   generateChargeConfirmationPDF,
 } from "@/lib/pdf-generator";
-import type { ApplicationData } from "@/lib/types";
+import type { ApplicationData, PersonData } from "@/lib/types";
 
 // Initialize Supabase client with service role key
 const supabase = createClient(
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing application data" }, { status: 400 });
     }
 
-    let application: ApplicationData = JSON.parse(appJson);
+    const application: ApplicationData = JSON.parse(appJson);
 
     // Sanitize input: remove formatting from phone, EIN, etc.
     const sanitizePhoneNumber = (phone: string) => phone.replace(/\D/g, "");
@@ -56,6 +56,39 @@ export async function POST(req: NextRequest) {
         { error: "Missing required primary applicant fields" },
         { status: 400 }
       );
+    }
+
+    // Co-applicant remote-invite reconciliation.
+    // If primary chose co-applicant mode AND has dispatched an invite, look up that invite row:
+    //   - If the co-applicant already submitted, merge their data + license path now.
+    //   - If not, persist the application with status=awaiting_coapplicant; the co-app submit
+    //     endpoint will merge into this row when it arrives.
+    const coAppInviteToken =
+      application.mode === "co-applicant" ? application.coAppInvite?.token || null : null;
+    let coAppLicenseFromInvite: string | null = null;
+    let applicationStatus: "submitted" | "awaiting_coapplicant" = "submitted";
+
+    if (coAppInviteToken) {
+      const { data: invite, error: inviteErr } = await supabase
+        .from("coapp_invites")
+        .select("co_applicant_data, co_applicant_license_file_name, co_applicant_submitted_at")
+        .eq("token", coAppInviteToken)
+        .maybeSingle();
+
+      if (inviteErr) {
+        console.error("Invite lookup at submit failed (continuing):", inviteErr);
+      }
+
+      if (invite?.co_applicant_submitted_at && invite.co_applicant_data) {
+        const remoteCoApp = invite.co_applicant_data as PersonData;
+        application.coApplicant = {
+          ...remoteCoApp,
+          phone: sanitizePhoneNumber(remoteCoApp.phone || ""),
+        };
+        coAppLicenseFromInvite = invite.co_applicant_license_file_name || null;
+      } else {
+        applicationStatus = "awaiting_coapplicant";
+      }
     }
 
     // Generate PDFs
@@ -111,6 +144,12 @@ export async function POST(req: NextRequest) {
     };
     for (const [stagedKey, dbKey] of Object.entries(keyMap)) {
       if (staged[stagedKey]) uploadedFiles[dbKey] = staged[stagedKey] as string;
+    }
+
+    // If the co-applicant uploaded their license via the remote invite,
+    // that path supersedes any on-device co-app license (there isn't one in this flow).
+    if (coAppLicenseFromInvite) {
+      uploadedFiles["coapp_license"] = coAppLicenseFromInvite;
     }
 
     // Collect file metadata
@@ -256,7 +295,8 @@ export async function POST(req: NextRequest) {
             customer_email: p.email,
             customer_phone: p.phone,
             application_mode: application.mode,
-            status: "submitted",
+            status: applicationStatus,
+            coapp_invite_token: coAppInviteToken,
             storage_folder_path: folderPath,
             application_json: application,
             primary_license_file_name: uploadedFiles["primary_license"] || null,
@@ -280,6 +320,14 @@ export async function POST(req: NextRequest) {
         throw new Error(errorMsg);
       } else {
         console.log("Application saved to database:", data);
+        // If we merged co-app data at submit time, link the invite row to the new application.
+        const newAppId = Array.isArray(data) && data[0]?.id ? data[0].id : null;
+        if (coAppInviteToken && newAppId && applicationStatus === "submitted") {
+          await supabase
+            .from("coapp_invites")
+            .update({ merged_into_application_id: newAppId })
+            .eq("token", coAppInviteToken);
+        }
       }
     } catch (err) {
       const errorMsg = `Error saving to database: ${err instanceof Error ? err.message : String(err)}`;
