@@ -52,6 +52,10 @@ export default function PageScan({ person, update, onNext, isCoApp }: Props) {
           dob: ex.dob || person.dob,
           licenseNumber: ex.licenseNumber || person.licenseNumber,
           licenseAddress: ex.address || person.licenseAddress,
+          licenseStreet: ex.licenseStreet || person.licenseStreet,
+          licenseCity: ex.licenseCity || person.licenseCity,
+          licenseState: ex.licenseState || person.licenseState,
+          licenseZip: ex.licenseZip || person.licenseZip,
         });
         if (!anyFilled) {
           setError(

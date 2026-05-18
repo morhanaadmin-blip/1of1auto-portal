@@ -13,7 +13,11 @@ export type PersonData = {
   lastName: string;
   dob: string; // YYYY-MM-DD
   licenseNumber: string;
-  licenseAddress: string; // full address as on DL
+  licenseAddress: string; // full address as on DL (raw / display)
+  licenseStreet: string;
+  licenseCity: string;
+  licenseState: string;
+  licenseZip: string;
   // From CRM (pre-filled)
   email: string;
   phone: string;
@@ -138,6 +142,10 @@ export const emptyPerson = (): PersonData => ({
   dob: "",
   licenseNumber: "",
   licenseAddress: "",
+  licenseStreet: "",
+  licenseCity: "",
+  licenseState: "",
+  licenseZip: "",
   email: "",
   phone: "",
   ssn: "",

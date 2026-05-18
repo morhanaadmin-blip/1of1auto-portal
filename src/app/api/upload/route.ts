@@ -20,6 +20,10 @@ type Extracted = {
   dob: string;
   licenseNumber: string;
   address: string;
+  licenseStreet: string;
+  licenseCity: string;
+  licenseState: string;
+  licenseZip: string;
 };
 
 const EMPTY: Extracted = {
@@ -29,6 +33,10 @@ const EMPTY: Extracted = {
   dob: "",
   licenseNumber: "",
   address: "",
+  licenseStreet: "",
+  licenseCity: "",
+  licenseState: "",
+  licenseZip: "",
 };
 
 export async function POST(req: NextRequest) {
@@ -80,7 +88,7 @@ export async function POST(req: NextRequest) {
               },
               {
                 type: "text",
-                text: `Extract data from this US driver's license. Return ONLY JSON: {"firstName":"","middleName":"","lastName":"","dob":"YYYY-MM-DD","licenseNumber":"","address":"full address"}. If unclear, use empty string.`,
+                text: `Extract data from this US driver's license. Return ONLY valid JSON with these exact keys: {"firstName":"","middleName":"","lastName":"","dob":"YYYY-MM-DD","licenseNumber":"","address":"full address string","licenseStreet":"street line only e.g. 121 NE 3rd St Apt 1605","licenseCity":"city name","licenseState":"2-letter state code","licenseZip":"5 digit zip"}. Use empty string for any field you cannot read clearly.`,
               },
             ],
           },
@@ -117,6 +125,10 @@ export async function POST(req: NextRequest) {
         dob: /^\d{4}-\d{2}-\d{2}$/.test(parsed.dob) ? parsed.dob : "",
         licenseNumber: parsed.licenseNumber || "",
         address: parsed.address || "",
+        licenseStreet: parsed.licenseStreet || "",
+        licenseCity: parsed.licenseCity || "",
+        licenseState: parsed.licenseState || "",
+        licenseZip: parsed.licenseZip || "",
       },
     });
   } catch {

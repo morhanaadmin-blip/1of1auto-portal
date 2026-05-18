@@ -5,7 +5,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     if (body.action === "create-checkout") {
-      const stripeKey = process.env.STRIPE_SECRET_KEY;
+      const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
 
       if (!stripeKey) {
         return NextResponse.json({ url: null, message: "Stripe not configured — dev mode" });
