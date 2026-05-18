@@ -11,6 +11,7 @@ import PageHousing from "@/components/steps/PageHousing";
 import PageIncome from "@/components/steps/PageIncome";
 import PageEmployment from "@/components/steps/PageEmployment";
 import PageCoAppOrBusiness from "@/components/steps/PageCoAppOrBusiness";
+import PageCoAppInvite from "@/components/steps/PageCoAppInvite";
 import PageBusiness from "@/components/steps/PageBusiness";
 import PageDocuments from "@/components/steps/PageDocuments";
 import PageAgreement from "@/components/steps/PageAgreement";
@@ -22,6 +23,7 @@ import {
   emptyBusiness,
   type ApplicationData,
   type PersonData,
+  type CoAppRelationship,
 } from "@/lib/types";
 
 /**
@@ -47,6 +49,7 @@ type Step =
   | "income-primary"
   | "employment-primary"
   | "co-or-business"
+  | "coapp-invite"
   | "scan-coapp"
   | "confirm-coapp"
   | "housing-coapp"
@@ -142,6 +145,30 @@ function ApplyFlow() {
     setError("");
   };
 
+  const setCoAppRelationship = (relationship: CoAppRelationship) => {
+    setData((prev) => ({
+      ...prev,
+      coAppInvite: {
+        token: prev.coAppInvite?.token ?? "",
+        link: prev.coAppInvite?.link ?? "",
+        phone: prev.coAppInvite?.phone ?? "",
+        relationship,
+      },
+    }));
+  };
+
+  const setCoAppInviteState = (s: { token: string; link: string; phone: string }) => {
+    setData((prev) => ({
+      ...prev,
+      coAppInvite: {
+        relationship: prev.coAppInvite?.relationship ?? "",
+        token: s.token,
+        link: s.link,
+        phone: s.phone,
+      },
+    }));
+  };
+
   /**
    * setMode — switches application type WITHOUT wiping data.
    * Creates empty co-applicant/business only if one doesn't already exist.
@@ -182,9 +209,12 @@ function ApplyFlow() {
         setStep("co-or-business");
         break;
       case "co-or-business":
-        if (data.mode === "co-applicant") setStep("scan-coapp");
+        if (data.mode === "co-applicant") setStep("coapp-invite");
         else if (data.mode === "business") setStep("business-info");
         else setStep("documents");
+        break;
+      case "coapp-invite":
+        setStep("documents");
         break;
       case "scan-coapp":
         setStep("confirm-coapp");
@@ -223,6 +253,7 @@ function ApplyFlow() {
       case "income-primary": setStep("housing-primary"); break;
       case "employment-primary": setStep("income-primary"); break;
       case "co-or-business": setStep("employment-primary"); break;
+      case "coapp-invite": setStep("co-or-business"); break;
       case "scan-coapp": setStep("co-or-business"); break;
       case "confirm-coapp": setStep("scan-coapp"); break;
       case "housing-coapp": setStep("confirm-coapp"); break;
@@ -233,7 +264,7 @@ function ApplyFlow() {
       case "income-business": setStep("housing-business"); break;
       case "employment-business": setStep("income-business"); break;
       case "documents":
-        if (data.mode === "co-applicant") setStep("employment-coapp");
+        if (data.mode === "co-applicant") setStep("coapp-invite");
         else if (data.mode === "business") setStep("business-info");
         else setStep("co-or-business");
         break;
@@ -372,20 +403,22 @@ function ApplyFlow() {
   const getStepIndex = (): [number, number] => {
     const primarySteps = ["scan-primary", "confirm-primary", "housing-primary", "income-primary", "employment-primary"];
     const decisionStep = ["co-or-business"];
-    const coAppSteps = ["scan-coapp", "confirm-coapp", "housing-coapp", "income-coapp", "employment-coapp"];
+    // Co-applicant path on the primary's device is now a single invite step;
+    // the co-applicant fills out their portion remotely via /apply/coapp/[token].
+    const coAppInviteSteps = ["coapp-invite"];
     const businessSteps = ["business-info", "housing-business", "income-business", "employment-business"];
     const endSteps = ["documents", "agreement", "deposit"];
 
     const baseTotal = primarySteps.length + decisionStep.length;
     let total = baseTotal;
-    if (data.mode === "co-applicant") total += coAppSteps.length;
+    if (data.mode === "co-applicant") total += coAppInviteSteps.length;
     if (data.mode === "business") total += businessSteps.length;
     total += endSteps.length;
 
     const allInOrder = [
       ...primarySteps,
       ...decisionStep,
-      ...(data.mode === "co-applicant" ? coAppSteps : []),
+      ...(data.mode === "co-applicant" ? coAppInviteSteps : []),
       ...(data.mode === "business" ? businessSteps : []),
       ...endSteps,
     ];
@@ -434,6 +467,20 @@ function ApplyFlow() {
             )}
             {step === "co-or-business" && (
               <PageCoAppOrBusiness mode={data.mode} setMode={setMode} onNext={next} />
+            )}
+            {step === "coapp-invite" && (
+              <PageCoAppInvite
+                primaryFirstName={data.primary.firstName}
+                primaryLastName={data.primary.lastName}
+                primaryEmail={data.primary.email}
+                relationship={data.coAppInvite?.relationship || ""}
+                setRelationship={setCoAppRelationship}
+                inviteToken={data.coAppInvite?.token || ""}
+                inviteLink={data.coAppInvite?.link || ""}
+                invitePhone={data.coAppInvite?.phone || ""}
+                setInviteState={setCoAppInviteState}
+                onNext={next}
+              />
             )}
             {step === "scan-coapp" && data.coApplicant && (
               <PageScan person={data.coApplicant} update={updateCoApp} onNext={next} isCoApp={true} />
