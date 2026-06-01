@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "motion/react";
-import type { ApplicationData } from "@/lib/types";
+import type { ApplicationData, StagedFiles } from "@/lib/types";
 
 type Props = {
   data: ApplicationData;
@@ -15,10 +15,58 @@ export default function PageDepositSubmit({ data, setData, submit, submitting }:
   const [processing, setProcessing] = useState(false);
   const [paymentError, setPaymentError] = useState("");
 
+  // Upload a single file to Supabase before the Stripe redirect.
+  // Returns the stored path, or null if no file / upload fails.
+  const stageFile = async (file: File | null, label: string): Promise<string | null> => {
+    if (!file) return null;
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("label", label);
+      const res = await fetch("/api/predoc", { method: "POST", body: fd });
+      if (!res.ok) return null;
+      const { path } = await res.json();
+      return path ?? null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleCheckout = async () => {
+    // Check for test mode
+    const isTestMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("test");
+    if (isTestMode) {
+      setData((prev) => ({ ...prev, depositPaid: true, stripeSessionId: "test_mode" }));
+      return;
+    }
+
     setProcessing(true);
     setPaymentError("");
     try {
+      // Stage all document files to Supabase BEFORE redirecting to Stripe.
+      // File objects cannot survive the external redirect (JSON.stringify → {}).
+      // Paths are strings and survive localStorage perfectly.
+      const [primaryLicense, coAppLicense, insurance, registration, dlPhoto, utility, bizLicense] =
+        await Promise.all([
+          stageFile(data.primary.licenseFile, "primary-license"),
+          stageFile(data.coApplicant?.licenseFile ?? null, "coapp-license"),
+          stageFile(data.documents.insurance, "insurance"),
+          stageFile(data.documents.registration, "registration"),
+          stageFile(data.documents.driverLicensePhoto, "dl-photo"),
+          stageFile(data.documents.utilityBill, "utility"),
+          stageFile(data.documents.businessLicense, "biz-license"),
+        ]);
+
+      const staged: StagedFiles = {
+        primaryLicense,
+        coAppLicense,
+        insurance,
+        registration,
+        driverLicensePhoto: dlPhoto,
+        utilityBill: utility,
+        businessLicense: bizLicense,
+      };
+
       const res = await fetch("/api/webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -33,8 +81,22 @@ export default function PageDepositSubmit({ data, setData, submit, submitting }:
         throw new Error(json.error || "Payment setup failed");
       }
       if (json.url) {
-        // Save application state before leaving the page
-        sessionStorage.setItem("1of1_app_data", JSON.stringify(data));
+        // File objects stripped — only paths (strings) and licenseImage (base64) survive JSON
+        const dataToSave = {
+          ...data,
+          primary: { ...data.primary, licenseFile: null },
+          coApplicant: data.coApplicant ? { ...data.coApplicant, licenseFile: null } : null,
+          documents: {
+            ...data.documents,
+            insurance: null,
+            registration: null,
+            driverLicensePhoto: null,
+            utilityBill: null,
+            businessLicense: null,
+          },
+          _staged: staged,
+        };
+        localStorage.setItem("1of1_app_data", JSON.stringify(dataToSave));
         window.location.href = json.url;
       } else {
         // Dev mode: Stripe not configured
@@ -75,7 +137,7 @@ export default function PageDepositSubmit({ data, setData, submit, submitting }:
             disabled={processing}
             className="w-full py-3.5 rounded-xl bg-accent text-black font-semibold hover:bg-accent-dark transition-all active:scale-[0.98] disabled:opacity-40"
           >
-            {processing ? "Setting up secure payment..." : "Pay $99 securely"}
+            {processing ? "Securing your documents..." : "Pay $99 securely"}
           </button>
           {paymentError && (
             <p className="text-xs text-error">{paymentError}</p>

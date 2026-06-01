@@ -92,7 +92,7 @@ export default function PageConfirm({ person, update, isPrimary, onNext }: Props
       </div>
 
       <Field label="Email" value={person.email} onChange={(v) => update({ email: v })} type="email" inputMode="email" required autoFilled />
-      <Field label="Cell phone" value={person.phone} onChange={(v) => update({ phone: v })} type="tel" inputMode="tel" required autoFilled />
+      <Field label="Cell phone" value={person.phone} onChange={(v) => update({ phone: v })} type="text" inputMode="tel" required autoFilled />
 
       <DateOfBirth value={person.dob} onChange={(v) => update({ dob: v })} required autoFilled />
 

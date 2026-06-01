@@ -4,12 +4,14 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import Header from "@/components/Header";
+import HomeIntro from "@/components/HomeIntro";
 import PageScan from "@/components/steps/PageScan";
 import PageConfirm from "@/components/steps/PageConfirm";
 import PageHousing from "@/components/steps/PageHousing";
 import PageIncome from "@/components/steps/PageIncome";
 import PageEmployment from "@/components/steps/PageEmployment";
 import PageCoAppOrBusiness from "@/components/steps/PageCoAppOrBusiness";
+import PageCoAppInvite from "@/components/steps/PageCoAppInvite";
 import PageBusiness from "@/components/steps/PageBusiness";
 import PageDocuments from "@/components/steps/PageDocuments";
 import PageAgreement from "@/components/steps/PageAgreement";
@@ -21,6 +23,7 @@ import {
   emptyBusiness,
   type ApplicationData,
   type PersonData,
+  type CoAppRelationship,
 } from "@/lib/types";
 
 /**
@@ -46,6 +49,7 @@ type Step =
   | "income-primary"
   | "employment-primary"
   | "co-or-business"
+  | "coapp-invite"
   | "scan-coapp"
   | "confirm-coapp"
   | "housing-coapp"
@@ -62,6 +66,7 @@ type Step =
 
 function ApplyFlow() {
   const searchParams = useSearchParams();
+  const [showIntro, setShowIntro] = useState(true);
   const [step, setStep] = useState<Step>("scan-primary");
   const [data, setData] = useState<ApplicationData>(emptyApplication());
   const [submitting, setSubmitting] = useState(false);
@@ -72,19 +77,27 @@ function ApplyFlow() {
     const paymentStatus = searchParams.get("payment");
     if (paymentStatus === "success" || paymentStatus === "cancel") {
       // Restore saved application state after Stripe redirect
-      const saved = sessionStorage.getItem("1of1_app_data");
+      // localStorage survives external redirects on mobile; sessionStorage does not
+      const saved = localStorage.getItem("1of1_app_data");
       if (saved) {
         try {
           const savedData = JSON.parse(saved);
-          setData(
-            paymentStatus === "success"
-              ? { ...savedData, depositPaid: true, stripeSessionId: "stripe_verified" }
-              : savedData
-          );
-          sessionStorage.removeItem("1of1_app_data");
-        } catch {}
+          const restored = paymentStatus === "success"
+            ? { ...savedData, depositPaid: true, stripeSessionId: "stripe_verified" }
+            : savedData;
+          setData(restored);
+          localStorage.removeItem("1of1_app_data");
+
+          setStep("deposit");
+        } catch {
+          setStep("deposit");
+        }
+      } else if (paymentStatus === "success") {
+        // State was lost (e.g. mobile browser cleared storage) but payment went through —
+        // still mark deposit paid so the user isn't charged twice
+        setData((prev) => ({ ...prev, depositPaid: true, stripeSessionId: "stripe_verified" }));
+        setStep("deposit");
       }
-      setStep("deposit");
     } else {
       // Pre-fill primary applicant from URL (CRM data Mor provides)
       setData((prev) => ({
@@ -132,6 +145,30 @@ function ApplyFlow() {
     setError("");
   };
 
+  const setCoAppRelationship = (relationship: CoAppRelationship) => {
+    setData((prev) => ({
+      ...prev,
+      coAppInvite: {
+        token: prev.coAppInvite?.token ?? "",
+        link: prev.coAppInvite?.link ?? "",
+        phone: prev.coAppInvite?.phone ?? "",
+        relationship,
+      },
+    }));
+  };
+
+  const setCoAppInviteState = (s: { token: string; link: string; phone: string }) => {
+    setData((prev) => ({
+      ...prev,
+      coAppInvite: {
+        relationship: prev.coAppInvite?.relationship ?? "",
+        token: s.token,
+        link: s.link,
+        phone: s.phone,
+      },
+    }));
+  };
+
   /**
    * setMode — switches application type WITHOUT wiping data.
    * Creates empty co-applicant/business only if one doesn't already exist.
@@ -172,9 +209,12 @@ function ApplyFlow() {
         setStep("co-or-business");
         break;
       case "co-or-business":
-        if (data.mode === "co-applicant") setStep("scan-coapp");
+        if (data.mode === "co-applicant") setStep("coapp-invite");
         else if (data.mode === "business") setStep("business-info");
         else setStep("documents");
+        break;
+      case "coapp-invite":
+        setStep("documents");
         break;
       case "scan-coapp":
         setStep("confirm-coapp");
@@ -213,6 +253,7 @@ function ApplyFlow() {
       case "income-primary": setStep("housing-primary"); break;
       case "employment-primary": setStep("income-primary"); break;
       case "co-or-business": setStep("employment-primary"); break;
+      case "coapp-invite": setStep("co-or-business"); break;
       case "scan-coapp": setStep("co-or-business"); break;
       case "confirm-coapp": setStep("scan-coapp"); break;
       case "housing-coapp": setStep("confirm-coapp"); break;
@@ -223,7 +264,7 @@ function ApplyFlow() {
       case "income-business": setStep("housing-business"); break;
       case "employment-business": setStep("income-business"); break;
       case "documents":
-        if (data.mode === "co-applicant") setStep("employment-coapp");
+        if (data.mode === "co-applicant") setStep("coapp-invite");
         else if (data.mode === "business") setStep("business-info");
         else setStep("co-or-business");
         break;
@@ -232,10 +273,83 @@ function ApplyFlow() {
     }
   };
 
+  // Reconstruct a File from a base64 data URL (used to recover DL scan after Stripe redirect).
+  const dataURLtoFile = (dataUrl: string, filename: string): File => {
+    const [header, b64] = dataUrl.split(",");
+    const mime = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+    const bytes = atob(b64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    return new File([arr], filename, { type: mime });
+  };
+
+  // Compress image files to keep total payload under Vercel's 4.5MB limit.
+  // Skips non-image files (PDFs) unchanged. Falls back to original on any error.
+  const compressFile = async (file: File, maxKB = 900): Promise<File> => {
+    try {
+      if (!file.type.startsWith("image/") || file.size <= maxKB * 1024) return file;
+      return await new Promise((resolve) => {
+        const img = new Image();
+        let url: string;
+        try { url = URL.createObjectURL(file); } catch { resolve(file); return; }
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          try {
+            const maxDim = 1920;
+            let { width, height } = img;
+            if (width > maxDim || height > maxDim) {
+              const ratio = Math.min(maxDim / width, maxDim / height);
+              width = Math.round(width * ratio);
+              height = Math.round(height * ratio);
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) { resolve(file); return; }
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob(
+              (blob) => resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }) : file),
+              "image/jpeg",
+              0.75
+            );
+          } catch { resolve(file); }
+        };
+        img.onerror = () => { try { URL.revokeObjectURL(url); } catch {} resolve(file); };
+        img.src = url;
+      });
+    } catch {
+      return file;
+    }
+  };
+
   const submit = async () => {
     setSubmitting(true);
     setError("");
     try {
+      const s = data._staged || {};
+
+      // For each file: use the in-memory File if present, otherwise fall back to
+      // the licenseImage data URL (DL scan survives as base64), otherwise null.
+      // Files pre-staged before Stripe redirect are sent as paths in _staged — skip upload.
+      const primaryLicenseFile = data.primary.licenseFile
+        ?? (data.primary.licenseImage ? dataURLtoFile(data.primary.licenseImage, "primary-license.jpg") : null);
+      const coappLicenseFile = data.coApplicant?.licenseFile
+        ?? (data.coApplicant?.licenseImage ? dataURLtoFile(data.coApplicant.licenseImage, "coapp-license.jpg") : null)
+        ?? null;
+
+      // Compress images before upload to stay under Vercel's 4.5MB body limit
+      const [primaryLicense, coappLicense, insurance, registration, utilityBill, dlPhoto, bizLicense] =
+        await Promise.all([
+          !s.primaryLicense && primaryLicenseFile ? compressFile(primaryLicenseFile) : null,
+          !s.coAppLicense && coappLicenseFile ? compressFile(coappLicenseFile) : null,
+          !s.insurance && data.documents.insurance ? compressFile(data.documents.insurance) : null,
+          !s.registration && data.documents.registration ? compressFile(data.documents.registration) : null,
+          !s.utilityBill && data.documents.utilityBill ? compressFile(data.documents.utilityBill) : null,
+          !s.driverLicensePhoto && data.documents.driverLicensePhoto ? compressFile(data.documents.driverLicensePhoto) : null,
+          !s.businessLicense && data.documents.businessLicense ? compressFile(data.documents.businessLicense) : null,
+        ]);
+
       const formData = new FormData();
       formData.append("application", JSON.stringify({
         ...data,
@@ -246,19 +360,37 @@ function ApplyFlow() {
         documents: { ...data.documents, driverLicensePhoto: null },
       }));
 
-      if (data.primary.licenseFile) formData.append("primary_license", data.primary.licenseFile);
-      if (data.coApplicant?.licenseFile) formData.append("coapp_license", data.coApplicant.licenseFile);
-      if (data.documents.insurance) formData.append("insurance", data.documents.insurance);
-      if (data.documents.registration) formData.append("registration", data.documents.registration);
-      if (data.documents.utilityBill) formData.append("utility_bill", data.documents.utilityBill);
-      if (data.documents.driverLicensePhoto) formData.append("driver_license_photo", data.documents.driverLicensePhoto);
-      if (data.documents.businessLicense) formData.append("business_license", data.documents.businessLicense);
+      if (primaryLicense) formData.append("primary_license", primaryLicense);
+      if (coappLicense) formData.append("coapp_license", coappLicense);
+      if (insurance) formData.append("insurance", insurance);
+      if (registration) formData.append("registration", registration);
+      if (utilityBill) formData.append("utility_bill", utilityBill);
+      if (dlPhoto) formData.append("driver_license_photo", dlPhoto);
+      if (bizLicense) formData.append("business_license", bizLicense);
 
       const res = await fetch("/api/submit", { method: "POST", body: formData });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: "Submission failed" }));
-        throw new Error(body.error || "Submission failed");
+
+      // Parse response safely — non-JSON (e.g. Vercel 413) would crash res.json()
+      let body: Record<string, unknown>;
+      try {
+        body = await res.json();
+      } catch {
+        if (res.status === 413) throw new Error("Files are too large. Please try again — images will be compressed automatically.");
+        throw new Error(`Server error (${res.status}). Please try again.`);
       }
+
+      if (!res.ok) {
+        throw new Error((body.error as string) || "Submission failed");
+      }
+
+      // Check for upload errors even if submission was "successful"
+      if (body.uploadErrors && Object.keys(body.uploadErrors as object).length > 0) {
+        const errorList = Object.entries(body.uploadErrors as Record<string, string>)
+          .map(([file, err]) => `${file}: ${err}`)
+          .join("\n");
+        throw new Error(`File upload failed:\n${errorList}`);
+      }
+
       next();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed");
@@ -271,20 +403,22 @@ function ApplyFlow() {
   const getStepIndex = (): [number, number] => {
     const primarySteps = ["scan-primary", "confirm-primary", "housing-primary", "income-primary", "employment-primary"];
     const decisionStep = ["co-or-business"];
-    const coAppSteps = ["scan-coapp", "confirm-coapp", "housing-coapp", "income-coapp", "employment-coapp"];
+    // Co-applicant path on the primary's device is now a single invite step;
+    // the co-applicant fills out their portion remotely via /apply/coapp/[token].
+    const coAppInviteSteps = ["coapp-invite"];
     const businessSteps = ["business-info", "housing-business", "income-business", "employment-business"];
     const endSteps = ["documents", "agreement", "deposit"];
 
     const baseTotal = primarySteps.length + decisionStep.length;
     let total = baseTotal;
-    if (data.mode === "co-applicant") total += coAppSteps.length;
+    if (data.mode === "co-applicant") total += coAppInviteSteps.length;
     if (data.mode === "business") total += businessSteps.length;
     total += endSteps.length;
 
     const allInOrder = [
       ...primarySteps,
       ...decisionStep,
-      ...(data.mode === "co-applicant" ? coAppSteps : []),
+      ...(data.mode === "co-applicant" ? coAppInviteSteps : []),
       ...(data.mode === "business" ? businessSteps : []),
       ...endSteps,
     ];
@@ -293,6 +427,10 @@ function ApplyFlow() {
   };
 
   const [currentIdx, totalSteps] = getStepIndex();
+
+  if (showIntro) {
+    return <HomeIntro onComplete={() => setShowIntro(false)} />;
+  }
 
   if (step === "confirmation") {
     return <PageConfirmation data={data} />;
@@ -329,6 +467,20 @@ function ApplyFlow() {
             )}
             {step === "co-or-business" && (
               <PageCoAppOrBusiness mode={data.mode} setMode={setMode} onNext={next} />
+            )}
+            {step === "coapp-invite" && (
+              <PageCoAppInvite
+                primaryFirstName={data.primary.firstName}
+                primaryLastName={data.primary.lastName}
+                primaryEmail={data.primary.email}
+                relationship={data.coAppInvite?.relationship || ""}
+                setRelationship={setCoAppRelationship}
+                inviteToken={data.coAppInvite?.token || ""}
+                inviteLink={data.coAppInvite?.link || ""}
+                invitePhone={data.coAppInvite?.phone || ""}
+                setInviteState={setCoAppInviteState}
+                onNext={next}
+              />
             )}
             {step === "scan-coapp" && data.coApplicant && (
               <PageScan person={data.coApplicant} update={updateCoApp} onNext={next} isCoApp={true} />
