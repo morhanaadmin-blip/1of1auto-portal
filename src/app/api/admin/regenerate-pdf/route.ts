@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { id, patches } = body as { id: string; patches?: Record<string, string> };
+  const { id, patches, coPatches } = body as { id: string; patches?: Record<string, string>; coPatches?: Record<string, string> };
   if (!id) {
     return NextResponse.json({ error: "Missing application id" }, { status: 400 });
   }
@@ -42,10 +42,14 @@ export async function POST(req: NextRequest) {
     ? JSON.parse(row.application_json)
     : row.application_json;
 
-  // Apply admin patches (e.g. missing employer address fields)
+  // Apply admin patches
   if (patches && Object.keys(patches).length > 0) {
     application.primary = { ...application.primary, ...patches } as typeof application.primary;
-    // Persist patches back into application_json in the DB
+  }
+  if (coPatches && Object.keys(coPatches).length > 0 && application.coApplicant) {
+    application.coApplicant = { ...application.coApplicant, ...coPatches } as typeof application.coApplicant;
+  }
+  if ((patches && Object.keys(patches).length > 0) || (coPatches && Object.keys(coPatches).length > 0)) {
     await supabase
       .from("applications")
       .update({ application_json: application })

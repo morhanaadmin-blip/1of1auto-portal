@@ -49,6 +49,20 @@ const FILE_LABELS: { key: keyof AppFiles; label: string; icon: string; isPdf?: b
   { key: "businessLicense", label: "Business License", icon: "🏢" },
 ];
 
+const EDITABLE_FIELDS = [
+  { field: "licenseAddress", label: "Home Address (DL)", placeholder: "e.g. 17811 SW 58th St" },
+  { field: "licenseCity", label: "City (DL)", placeholder: "e.g. Miami" },
+  { field: "licenseState", label: "State (DL)", placeholder: "e.g. FL" },
+  { field: "licenseZip", label: "ZIP (DL)", placeholder: "e.g. 33175" },
+  { field: "registeringAddress", label: "Registering Address", placeholder: "e.g. 5121 N 37th St, Hollywood, FL 33021" },
+  { field: "employerName", label: "Employer Name", placeholder: "" },
+  { field: "employerStreet", label: "Employer Street", placeholder: "" },
+  { field: "employerCity", label: "Employer City", placeholder: "" },
+  { field: "employerState", label: "Employer State", placeholder: "" },
+  { field: "employerZip", label: "Employer ZIP", placeholder: "" },
+  { field: "occupation", label: "Occupation", placeholder: "" },
+];
+
 export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [savedPassword, setSavedPassword] = useState("");
@@ -58,9 +72,11 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<Set<string>>(new Set());
   const [regenerating, setRegenerating] = useState<Set<string>>(new Set());
   const [regenStatus, setRegenStatus] = useState<Record<string, string>>({});
   const [patches, setPatches] = useState<Record<string, Record<string, string>>>({});
+  const [coPatches, setCoPatches] = useState<Record<string, Record<string, string>>>({});
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -92,6 +108,13 @@ export default function AdminPage() {
     }));
   }
 
+  function setCoPatch(id: string, field: string, value: string) {
+    setCoPatches((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || {}), [field]: value },
+    }));
+  }
+
   async function regeneratePdf(id: string) {
     setRegenerating((prev) => new Set(prev).add(id));
     setRegenStatus((prev) => ({ ...prev, [id]: "" }));
@@ -102,12 +125,11 @@ export default function AdminPage() {
           "Content-Type": "application/json",
           "x-admin-password": savedPassword,
         },
-        body: JSON.stringify({ id, patches: patches[id] || {} }),
+        body: JSON.stringify({ id, patches: patches[id] || {}, coPatches: coPatches[id] || {} }),
       });
       const data = await res.json();
       if (res.ok) {
         setRegenStatus((prev) => ({ ...prev, [id]: "done" }));
-        // Reload applications to get fresh PDF URL
         const appsRes = await fetch("/api/admin/applications", {
           headers: { "x-admin-password": savedPassword },
         });
@@ -130,6 +152,15 @@ export default function AdminPage() {
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleEdit(id: string) {
+    setEditing((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -172,7 +203,6 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-black text-white p-4 pb-16">
-      {/* Header */}
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -187,10 +217,10 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {/* Application Cards */}
         <div className="space-y-3">
           {displayed.map((app) => {
             const isOpen = expanded.has(app.id);
+            const isEditing = editing.has(app.id);
             const fileCount = Object.values(app.files).filter(Boolean).length;
             const hasMissing = (app.missingFields || []).length > 0;
             const date = new Date(app.createdAt).toLocaleDateString("en-US", {
@@ -265,6 +295,64 @@ export default function AdminPage() {
                       </div>
                     )}
 
+                    {/* Edit Application Fields */}
+                    <div>
+                      <button
+                        onClick={() => toggleEdit(app.id)}
+                        className="text-xs text-zinc-400 border border-zinc-700 rounded-lg px-3 py-1.5 hover:border-zinc-500 mb-3"
+                      >
+                        {isEditing ? "▲ Hide Editor" : "✏️ Edit Application Fields"}
+                      </button>
+
+                      {isEditing && (
+                        <div className="bg-zinc-950 border border-zinc-700 rounded-xl p-4 space-y-4">
+                          {/* Primary Applicant */}
+                          <div>
+                            <div className="text-xs text-zinc-400 uppercase tracking-wide font-semibold mb-2">
+                              Primary — {app.firstName} {app.lastName}
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                              {EDITABLE_FIELDS.map(({ field, label, placeholder }) => (
+                                <div key={field} className="flex flex-col gap-1">
+                                  <label className="text-xs text-zinc-500">{label}</label>
+                                  <input
+                                    type="text"
+                                    value={patches[app.id]?.[field] ?? ""}
+                                    onChange={(e) => setPatch(app.id, field, e.target.value)}
+                                    placeholder={placeholder || `Override ${label}`}
+                                    className="bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-yellow-500"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Co-Applicant */}
+                          <div>
+                            <div className="text-xs text-zinc-400 uppercase tracking-wide font-semibold mb-2">
+                              Co-Applicant
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                              {EDITABLE_FIELDS.map(({ field, label, placeholder }) => (
+                                <div key={field} className="flex flex-col gap-1">
+                                  <label className="text-xs text-zinc-500">{label}</label>
+                                  <input
+                                    type="text"
+                                    value={coPatches[app.id]?.[field] ?? ""}
+                                    onChange={(e) => setCoPatch(app.id, field, e.target.value)}
+                                    placeholder={placeholder || `Override ${label}`}
+                                    className="bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-yellow-500"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <p className="text-zinc-600 text-xs">Leave blank to keep original values. Changes save when you regenerate the PDF.</p>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Files */}
                     <div className="space-y-2">
                       <div className="text-xs text-zinc-500 uppercase tracking-wide font-semibold">Documents</div>
@@ -272,7 +360,6 @@ export default function AdminPage() {
                         {FILE_LABELS.map(({ key, label, icon, isPdf }) => {
                           const url = app.files[key];
                           if (!url) return null;
-                          // Extract storage path from full URL
                           const storagePath = url.split("/Applications/")[1] || "";
                           const downloadUrl = `/api/admin/download?pw=${encodeURIComponent(savedPassword)}&path=${encodeURIComponent(storagePath)}`;
                           return (
@@ -315,7 +402,7 @@ export default function AdminPage() {
                         {regenerating.has(app.id) ? "Regenerating..." : "↻ Regenerate App PDF"}
                       </button>
                       {regenStatus[app.id] === "done" && (
-                        <span className="text-green-400 text-xs">PDF updated</span>
+                        <span className="text-green-400 text-xs">✓ PDF updated</span>
                       )}
                       {regenStatus[app.id] && regenStatus[app.id] !== "done" && (
                         <span className="text-red-400 text-xs">{regenStatus[app.id]}</span>
