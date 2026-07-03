@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { generateApplicationPDF } from "@/lib/pdf-generator";
+import { decrypt } from "@/lib/crypto";
 import type { ApplicationData } from "@/lib/types";
+
+function decryptIfEncrypted(value: string | undefined | null): string | undefined {
+  if (!value) return undefined;
+  try {
+    // Encrypted values are "ivHex:tagHex:dataHex" — three colon-separated hex segments
+    const parts = value.split(":");
+    if (parts.length === 3 && parts.every(p => /^[0-9a-f]+$/i.test(p))) {
+      return decrypt(value);
+    }
+  } catch { /* not encrypted or wrong key — return as-is */ }
+  return value;
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
@@ -66,6 +79,26 @@ export async function POST(req: NextRequest) {
     utilityBill: row.utility_bill_file_name || null,
     businessLicense: row.business_license_file_name || null,
   };
+
+  // Decrypt sensitive fields before PDF generation (DB stores them encrypted)
+  application.primary = {
+    ...application.primary,
+    ssn: decryptIfEncrypted(application.primary.ssn),
+    dob: decryptIfEncrypted(application.primary.dob),
+  };
+  if (application.coApplicant) {
+    application.coApplicant = {
+      ...application.coApplicant,
+      ssn: decryptIfEncrypted(application.coApplicant.ssn),
+      dob: decryptIfEncrypted(application.coApplicant.dob),
+    };
+  }
+  if (application.business) {
+    application.business = {
+      ...application.business,
+      ein: decryptIfEncrypted(application.business.ein),
+    };
+  }
 
   // Regenerate PDF with fixed generator
   let pdfBuffer: Buffer;
