@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-const STORAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/Applications`;
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+);
 
 export async function GET(req: NextRequest) {
-  const password = req.nextUrl.searchParams.get("pw");
+  const password = req.headers.get("x-admin-password");
   if (password !== process.env.ADMIN_PASSWORD) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
@@ -13,19 +17,26 @@ export async function GET(req: NextRequest) {
     return new NextResponse("Missing path", { status: 400 });
   }
 
-  // Prevent path traversal
-  const safePath = path.replace(/\.\./g, "").replace(/^\/+/, "");
-  const url = `${STORAGE_BASE}/${safePath}`;
+  // Prevent path traversal; strip query string (signed URL tokens from Supabase)
+  const safePath = path.replace(/\.\./g, "").replace(/^\/+/, "").split("?")[0];
+
+  const { data, error } = await supabase.storage
+    .from("Applications")
+    .createSignedUrl(safePath, 3600);
+
+  if (error || !data?.signedUrl) {
+    return new NextResponse("File not found", { status: 404 });
+  }
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(data.signedUrl);
     if (!res.ok) {
       return new NextResponse("File not found", { status: 404 });
     }
 
     const buffer = await res.arrayBuffer();
-    const contentType = res.headers.get("content-type") || "application/octet-stream";
     const filename = safePath.split("/").pop() || "download";
+    const contentType = filename.endsWith(".pdf") ? "application/pdf" : (res.headers.get("content-type") || "application/octet-stream");
 
     return new NextResponse(buffer, {
       headers: {
