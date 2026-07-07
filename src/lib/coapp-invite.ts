@@ -7,8 +7,8 @@ export function generateInviteToken(): string {
 
 export function buildInviteLink(token: string, req?: Request): string {
   const fromEnv =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+    (process.env.NEXT_PUBLIC_APP_URL || "").trim() ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : "");
   const origin = fromEnv || (req ? new URL(req.url).origin : "");
   return `${origin}/apply/coapp/${token}`;
 }

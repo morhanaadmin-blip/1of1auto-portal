@@ -18,7 +18,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("coapp_invites")
     .select(
-      "token, primary_first_name, primary_last_name, relationship, co_applicant_submitted_at"
+      "token, primary_first_name, primary_last_name, relationship, co_applicant_submitted_at, expires_at"
     )
     .eq("token", token)
     .maybeSingle();
@@ -29,6 +29,9 @@ export async function GET(
   }
   if (!data) {
     return NextResponse.json({ error: "Invite not found" }, { status: 404 });
+  }
+  if (data.expires_at && new Date(data.expires_at) <= new Date()) {
+    return NextResponse.json({ error: "This invite link has expired." }, { status: 410 });
   }
 
   return NextResponse.json({

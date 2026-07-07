@@ -6,6 +6,7 @@ import {
   generateChargeConfirmationPDF,
 } from "@/lib/pdf-generator";
 import type { ApplicationData, PersonData } from "@/lib/types";
+import { encryptIfPresent } from "@/lib/crypto";
 
 // Initialize Supabase client with service role key
 const supabase = createClient(
@@ -227,7 +228,7 @@ export async function POST(req: NextRequest) {
 
         const uploadResult = await supabase.storage
           .from("Applications")
-          .upload(pdfPath, applicationPdfBuffer);
+          .upload(pdfPath, applicationPdfBuffer, { contentType: "application/pdf" });
 
         console.log("Upload result:", uploadResult);
 
@@ -285,6 +286,32 @@ export async function POST(req: NextRequest) {
     }
 
     // Save application record to database
+    // Build a secured copy with sensitive fields encrypted before persisting.
+    // The original `application` object (plaintext) is intentionally kept for
+    // Telegram notification masking and PDF generation above — encryption happens
+    // only on what goes into the database.
+    const securedApplication = {
+      ...application,
+      primary: {
+        ...application.primary,
+        ssn: encryptIfPresent(application.primary.ssn),
+        dob: encryptIfPresent(application.primary.dob),
+      },
+      ...(application.coApplicant && {
+        coApplicant: {
+          ...application.coApplicant,
+          ssn: encryptIfPresent(application.coApplicant.ssn),
+          dob: encryptIfPresent(application.coApplicant.dob),
+        },
+      }),
+      ...(application.business && {
+        business: {
+          ...application.business,
+          ein: encryptIfPresent(application.business.ein),
+        },
+      }),
+    };
+
     try {
       const { data, error } = await supabase
         .from("applications")
@@ -298,7 +325,7 @@ export async function POST(req: NextRequest) {
             status: applicationStatus,
             coapp_invite_token: coAppInviteToken,
             storage_folder_path: folderPath,
-            application_json: application,
+            application_json: securedApplication,
             primary_license_file_name: uploadedFiles["primary_license"] || null,
             co_applicant_license_file_name: uploadedFiles["coapp_license"] || null,
             insurance_file_name: uploadedFiles["insurance"] || null,

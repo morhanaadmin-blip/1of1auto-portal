@@ -361,18 +361,31 @@ export default function AdminPage() {
                           const url = app.files[key];
                           if (!url) return null;
                           const storagePath = url.split("/Applications/")[1] || "";
-                          const downloadUrl = `/api/admin/download?pw=${encodeURIComponent(savedPassword)}&path=${encodeURIComponent(storagePath)}`;
+                          const filename = storagePath.split("/").pop() || "download";
+                          async function handleDownload() {
+                            const res = await fetch(`/api/admin/download?path=${encodeURIComponent(storagePath)}`, {
+                              headers: { "x-admin-password": savedPassword },
+                            });
+                            if (!res.ok) return;
+                            const blob = await res.blob();
+                            const objectUrl = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = objectUrl;
+                            a.download = filename;
+                            a.click();
+                            URL.revokeObjectURL(objectUrl);
+                          }
                           return (
                             <div key={key} className="flex items-center gap-2 bg-zinc-800 rounded-lg px-3 py-2.5 text-sm">
                               <span>{icon}</span>
                               <span className="text-white flex-1">{label}</span>
                               {isPdf ? (
-                                <a
-                                  href={downloadUrl}
+                                <button
+                                  onClick={handleDownload}
                                   className="text-yellow-400 hover:text-yellow-300 text-xs font-medium px-2 py-1 border border-yellow-500/30 rounded"
                                 >
                                   ↓ Download
-                                </a>
+                                </button>
                               ) : (
                                 <a
                                   href={url}

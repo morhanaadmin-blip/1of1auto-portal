@@ -13,8 +13,31 @@ const supabase = createClient(
 
 const VALID_RELATIONSHIPS = new Set(["spouse", "relative", "partner", "other"]);
 
+// In-memory rate limiting: max 5 invites per IP per hour
+const ipRateMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
 export async function POST(req: NextRequest) {
   try {
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+      req.headers.get("x-real-ip") ||
+      "unknown";
+    const now = Date.now();
+    const rateEntry = ipRateMap.get(ip);
+    if (rateEntry && now < rateEntry.resetAt) {
+      if (rateEntry.count >= RATE_LIMIT_MAX) {
+        return NextResponse.json(
+          { error: "Too many invites. Try again later." },
+          { status: 429 }
+        );
+      }
+      rateEntry.count += 1;
+    } else {
+      ipRateMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    }
+
     const body = await req.json();
     const primaryFirstName = String(body.primaryFirstName || "").trim();
     const primaryLastName = String(body.primaryLastName || "").trim();
@@ -43,6 +66,7 @@ export async function POST(req: NextRequest) {
         primary_email: primaryEmail,
         relationship,
         co_applicant_phone: coApplicantPhone,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       },
     ]);
 

@@ -11,7 +11,27 @@ import { NextRequest, NextResponse } from "next/server";
  *
  * To enable OCR: add a standard API key (sk-ant-api03-...) to
  * ANTHROPIC_API_KEY in Vercel environment variables.
+ *
+ * Auth note: This route is intentionally unauthenticated. The upload step
+ * occurs before the customer has an account or session (pre-login flow).
+ * Do not add auth middleware here without rethinking the full upload UX.
  */
+
+const ALLOWED_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/heic",
+  "image/heif",
+  "image/webp",
+]);
+
+const ALLOWED_EXTENSIONS = new Set([
+  "pdf", "jpeg", "jpg", "png", "heic", "heif", "webp",
+]);
+
+const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15 MB
 
 type Extracted = {
   firstName: string;
@@ -46,6 +66,18 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    // File size validation
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return NextResponse.json({ error: "File too large (max 15MB)" }, { status: 400 });
+    }
+
+    // File type validation — check both MIME type and extension
+    const mimeType = file.type?.toLowerCase() || "";
+    const ext = file.name?.split(".").pop()?.toLowerCase() || "";
+    if (!ALLOWED_MIME_TYPES.has(mimeType) || !ALLOWED_EXTENSIONS.has(ext)) {
+      return NextResponse.json({ error: "File type not allowed" }, { status: 400 });
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
