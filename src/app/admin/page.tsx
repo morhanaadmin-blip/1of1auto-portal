@@ -360,7 +360,7 @@ export default function AdminPage() {
                         {FILE_LABELS.map(({ key, label, icon, isPdf }) => {
                           const url = app.files[key];
                           if (!url) return null;
-                          const storagePath = url.split("/Applications/")[1] || "";
+                          const storagePath = (url.split("/Applications/")[1] || "").split("?")[0];
                           const filename = storagePath.split("/").pop() || "download";
                           async function handleDownload() {
                             const res = await fetch(`/api/admin/download?path=${encodeURIComponent(storagePath)}`, {
