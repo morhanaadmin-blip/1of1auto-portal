@@ -4,8 +4,8 @@ import { generateApplicationPDF } from "@/lib/pdf-generator";
 import { decrypt } from "@/lib/crypto";
 import type { ApplicationData } from "@/lib/types";
 
-function decryptIfEncrypted(value: string | undefined | null): string | undefined {
-  if (!value) return undefined;
+function decryptIfEncrypted(value: string | undefined | null): string {
+  if (!value) return "";
   try {
     // Encrypted values are "ivHex:tagHex:dataHex" — three colon-separated hex segments
     const parts = value.split(":");
