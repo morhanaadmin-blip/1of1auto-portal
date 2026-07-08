@@ -369,33 +369,26 @@ export default function AdminPage() {
                             if (!res.ok) return;
                             const blob = await res.blob();
                             const objectUrl = URL.createObjectURL(blob);
-                            const a = document.createElement("a");
-                            a.href = objectUrl;
-                            a.download = filename;
-                            a.click();
-                            URL.revokeObjectURL(objectUrl);
+                            if (isPdf) {
+                              const a = document.createElement("a");
+                              a.href = objectUrl;
+                              a.download = filename;
+                              a.click();
+                              URL.revokeObjectURL(objectUrl);
+                            } else {
+                              window.open(objectUrl, "_blank");
+                            }
                           }
                           return (
                             <div key={key} className="flex items-center gap-2 bg-zinc-800 rounded-lg px-3 py-2.5 text-sm">
                               <span>{icon}</span>
                               <span className="text-white flex-1">{label}</span>
-                              {isPdf ? (
-                                <button
-                                  onClick={handleDownload}
-                                  className="text-yellow-400 hover:text-yellow-300 text-xs font-medium px-2 py-1 border border-yellow-500/30 rounded"
-                                >
-                                  ↓ Download
-                                </button>
-                              ) : (
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-zinc-400 hover:text-white text-xs"
-                                >
-                                  ↗ View
-                                </a>
-                              )}
+                              <button
+                                onClick={handleDownload}
+                                className="text-zinc-400 hover:text-white text-xs"
+                              >
+                                ↗ View / Download
+                              </button>
                             </div>
                           );
                         })}
