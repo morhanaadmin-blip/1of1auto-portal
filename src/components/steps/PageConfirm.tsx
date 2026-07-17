@@ -19,50 +19,21 @@ const US_STATES = [
   "VA","WA","WV","WI","WY","DC",
 ].map((s) => ({ value: s, label: s }));
 
-/**
- * Parse a license address string into street/city/state/zip.
- * Example: "123 MAIN ST MIAMI FL 33312" or "123 Main St, Miami, FL 33312"
- */
-function parseAddress(raw: string): { street: string; city: string; state: string; zip: string } {
-  if (!raw) return { street: "", city: "", state: "", zip: "" };
-  const trimmed = raw.trim();
-  // Match trailing state + zip: STATE ZIP at end
-  const stateZipMatch = trimmed.match(/(.*?)[,\s]+([A-Z]{2})[,\s]+(\d{5}(?:-\d{4})?)\s*$/i);
-  if (stateZipMatch) {
-    const before = stateZipMatch[1].trim().replace(/,$/, "").trim();
-    // Try to split street and city — typically last comma or 2+ spaces separates them
-    const commaParts = before.split(",").map((s) => s.trim()).filter(Boolean);
-    if (commaParts.length >= 2) {
-      const street = commaParts.slice(0, -1).join(", ");
-      const city = commaParts[commaParts.length - 1];
-      return { street, city, state: stateZipMatch[2].toUpperCase(), zip: stateZipMatch[3] };
-    }
-    // No commas: guess — last 1-3 words are city
-    const words = before.split(/\s+/);
-    if (words.length >= 2) {
-      const cityWordCount = words.length <= 3 ? 1 : 2;
-      const city = words.slice(-cityWordCount).join(" ");
-      const street = words.slice(0, -cityWordCount).join(" ");
-      return { street, city, state: stateZipMatch[2].toUpperCase(), zip: stateZipMatch[3] };
-    }
-    return { street: before, city: "", state: stateZipMatch[2].toUpperCase(), zip: stateZipMatch[3] };
-  }
-  return { street: trimmed, city: "", state: "", zip: "" };
-}
-
 export default function PageConfirm({ person, update, isPrimary, onNext }: Props) {
-  // Parse DL address into structured components if fields aren't populated
-  const addr = parseAddress(person.licenseAddress);
-  const street = (person as unknown as Record<string, string>).licenseStreet ?? addr.street;
-  const city = (person as unknown as Record<string, string>).licenseCity ?? addr.city;
-  const stateCode = (person as unknown as Record<string, string>).licenseState ?? addr.state;
-  const zip = (person as unknown as Record<string, string>).licenseZip ?? addr.zip;
+  // Use structured address fields directly — populated by OCR or manual entry
+  const street = person.licenseStreet;
+  const city = person.licenseCity;
+  const stateCode = person.licenseState;
+  const zip = person.licenseZip;
 
   const updateAddressPart = (part: "street" | "city" | "state" | "zip", val: string) => {
-    const current = { street, city, state: stateCode, zip };
-    current[part] = val;
-    const full = `${current.street}${current.city ? ", " + current.city : ""}${current.state ? ", " + current.state : ""}${current.zip ? " " + current.zip : ""}`;
-    update({ licenseAddress: full });
+    const fieldMap = { street: "licenseStreet", city: "licenseCity", state: "licenseState", zip: "licenseZip" } as const;
+    const newStreet = part === "street" ? val : street;
+    const newCity = part === "city" ? val : city;
+    const newState = part === "state" ? val : stateCode;
+    const newZip = part === "zip" ? val : zip;
+    const full = `${newStreet}${newCity ? ", " + newCity : ""}${newState ? ", " + newState : ""}${newZip ? " " + newZip : ""}`;
+    update({ [fieldMap[part]]: val, licenseAddress: full });
   };
 
   // Missing-field hints — show what's blocking progression
@@ -92,7 +63,7 @@ export default function PageConfirm({ person, update, isPrimary, onNext }: Props
       </div>
 
       <Field label="Email" value={person.email} onChange={(v) => update({ email: v })} type="email" inputMode="email" required autoFilled />
-      <Field label="Cell phone" value={person.phone} onChange={(v) => update({ phone: v })} type="tel" inputMode="tel" required autoFilled />
+      <Field label="Cell phone" value={person.phone} onChange={(v) => update({ phone: v })} type="text" inputMode="tel" required autoFilled />
 
       <DateOfBirth value={person.dob} onChange={(v) => update({ dob: v })} required autoFilled />
 

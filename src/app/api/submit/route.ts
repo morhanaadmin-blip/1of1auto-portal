@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import type { ApplicationData } from "@/lib/types";
+import {
+  generateApplicationPDF,
+  generateAgreementPDF,
+  generateChargeConfirmationPDF,
+} from "@/lib/pdf-generator";
+import type { ApplicationData, PersonData } from "@/lib/types";
+import { encryptIfPresent } from "@/lib/crypto";
+import { sanitizeSSN } from "@/lib/ssn";
 
 // Initialize Supabase client with service role key
 const supabase = createClient(
@@ -18,6 +25,137 @@ export async function POST(req: NextRequest) {
 
     const application: ApplicationData = JSON.parse(appJson);
 
+    // Sanitize input: remove formatting from phone, EIN, etc.
+    const sanitizePhoneNumber = (phone: string) => phone.replace(/\D/g, "");
+    const sanitizeEIN = (ein: string) => ein.replace(/\D/g, "");
+
+    // Apply sanitization to primary applicant
+    application.primary = {
+      ...application.primary,
+      phone: sanitizePhoneNumber(application.primary.phone),
+      ssn: sanitizeSSN(application.primary.ssn || ""),
+    };
+
+    // Apply sanitization to co-applicant if present
+    if (application.coApplicant) {
+      application.coApplicant = {
+        ...application.coApplicant,
+        phone: sanitizePhoneNumber(application.coApplicant.phone),
+        ssn: sanitizeSSN(application.coApplicant.ssn || ""),
+      };
+    }
+
+    // Apply sanitization to business if present
+    if (application.business) {
+      application.business = {
+        ...application.business,
+        ein: sanitizeEIN(application.business.ein),
+      };
+    }
+
+    // Basic validation & extract primary applicant
+    const p = application.primary;
+    if (!p.firstName || !p.lastName || !p.email || !p.phone) {
+      return NextResponse.json(
+        { error: "Missing required primary applicant fields" },
+        { status: 400 }
+      );
+    }
+
+    // Co-applicant remote-invite reconciliation.
+    // If primary chose co-applicant mode AND has dispatched an invite, look up that invite row:
+    //   - If the co-applicant already submitted, merge their data + license path now.
+    //   - If not, persist the application with status=awaiting_coapplicant; the co-app submit
+    //     endpoint will merge into this row when it arrives.
+    const coAppInviteToken =
+      application.mode === "co-applicant" ? application.coAppInvite?.token || null : null;
+    let coAppLicenseFromInvite: string | null = null;
+    let applicationStatus: "submitted" | "awaiting_coapplicant" = "submitted";
+
+    if (coAppInviteToken) {
+      const { data: invite, error: inviteErr } = await supabase
+        .from("coapp_invites")
+        .select("co_applicant_data, co_applicant_license_file_name, co_applicant_submitted_at")
+        .eq("token", coAppInviteToken)
+        .maybeSingle();
+
+      if (inviteErr) {
+        console.error("Invite lookup at submit failed (continuing):", inviteErr);
+      }
+
+      if (invite?.co_applicant_submitted_at && invite.co_applicant_data) {
+        const remoteCoApp = invite.co_applicant_data as PersonData;
+        application.coApplicant = {
+          ...remoteCoApp,
+          phone: sanitizePhoneNumber(remoteCoApp.phone || ""),
+        };
+        coAppLicenseFromInvite = invite.co_applicant_license_file_name || null;
+      } else {
+        applicationStatus = "awaiting_coapplicant";
+      }
+    }
+
+    // Generate PDFs
+    let applicationPdfBuffer: Buffer | null = null;
+    let agreementPdfBuffer: Buffer | null = null;
+    let chargePdfBuffer: Buffer | null = null;
+
+    try {
+      applicationPdfBuffer = await generateApplicationPDF(application);
+      console.log(`Generated application PDF: ${applicationPdfBuffer.length} bytes`);
+    } catch (err) {
+      console.error("Error generating application PDF:", err);
+    }
+
+    try {
+      if (application.agreement.signatureData) {
+        agreementPdfBuffer = await generateAgreementPDF(
+          `${p.firstName} ${p.lastName}`,
+          application.agreement.signatureData
+        );
+        console.log(`Generated agreement PDF: ${agreementPdfBuffer.length} bytes`);
+      }
+    } catch (err) {
+      console.error("Error generating agreement PDF:", err);
+    }
+
+    try {
+      if (application.depositPaid) {
+        chargePdfBuffer = await generateChargeConfirmationPDF(
+          `${p.firstName} ${p.lastName}`,
+          p.email,
+          99, // $99 deposit
+          application.stripeSessionId || "unknown",
+          "****" // Card last 4 not available in this context
+        );
+        console.log(`Generated charge confirmation PDF: ${chargePdfBuffer.length} bytes`);
+      }
+    } catch (err) {
+      console.error("Error generating charge confirmation PDF:", err);
+    }
+
+    // Pre-staged files were uploaded before Stripe redirect — map them directly to uploadedFiles.
+    const staged = (application as { _staged?: Record<string, string | null | undefined> })._staged || {};
+    const uploadedFiles: { [key: string]: string } = {};
+    const keyMap: Record<string, string> = {
+      primaryLicense: "primary_license",
+      coAppLicense: "coapp_license",
+      insurance: "insurance",
+      registration: "registration",
+      driverLicensePhoto: "driver_license_photo",
+      utilityBill: "utility_bill",
+      businessLicense: "business_license",
+    };
+    for (const [stagedKey, dbKey] of Object.entries(keyMap)) {
+      if (staged[stagedKey]) uploadedFiles[dbKey] = staged[stagedKey] as string;
+    }
+
+    // If the co-applicant uploaded their license via the remote invite,
+    // that path supersedes any on-device co-app license (there isn't one in this flow).
+    if (coAppLicenseFromInvite) {
+      uploadedFiles["coapp_license"] = coAppLicenseFromInvite;
+    }
+
     // Collect file metadata
     const files: { field: string; name: string; size: number; type: string }[] = [];
     const fileMap: { [key: string]: File } = {};
@@ -29,16 +167,19 @@ export async function POST(req: NextRequest) {
         console.log(`File attached: ${key} - ${value.name} (${value.size} bytes)`);
       }
     }
-    console.log(`Total files collected: ${files.length}`);
 
-    // Basic validation
-    const p = application.primary;
-    if (!p.firstName || !p.lastName || !p.email || !p.phone) {
-      return NextResponse.json(
-        { error: "Missing required primary applicant fields" },
-        { status: 400 }
-      );
+    // Add PDFs to files if generated
+    if (applicationPdfBuffer) {
+      files.push({ field: "application_pdf", name: "application.pdf", size: applicationPdfBuffer.byteLength, type: "application/pdf" });
     }
+    if (agreementPdfBuffer) {
+      files.push({ field: "agreement_pdf", name: "agreement-signed.pdf", size: agreementPdfBuffer.byteLength, type: "application/pdf" });
+    }
+    if (chargePdfBuffer) {
+      files.push({ field: "charge_pdf", name: "payment-confirmation.pdf", size: chargePdfBuffer.byteLength, type: "application/pdf" });
+    }
+
+    console.log(`Total files collected: ${files.length}`);
 
     console.log("Application received:", {
       applicant: `${p.firstName} ${p.lastName}`,
@@ -49,33 +190,131 @@ export async function POST(req: NextRequest) {
       deposit: application.depositPaid,
     });
 
-    // Create storage folder for this customer
-    const customerName = `${p.firstName} ${p.lastName}`;
+    // Create storage folder for this customer (sanitize for Supabase Storage)
+    const sanitizePath = (str: string) =>
+      str.toLowerCase().replace(/[^a-z0-9.-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+    const customerName = sanitizePath(`${p.firstName} ${p.lastName}`);
     const folderPath = `${customerName}/${Date.now()}`;
 
-    // Upload files to Supabase Storage
-    const uploadedFiles: { [key: string]: string } = {};
+    // Upload files to Supabase Storage (pre-staged files already in uploadedFiles)
+    const uploadErrors: { [key: string]: string } = {};
     for (const [key, file] of Object.entries(fileMap)) {
       try {
-        const fileName = `${key}-${file.name}`;
+        const sanitizedFileName = sanitizePath(file.name);
+        const fileName = `${key}-${sanitizedFileName}`;
         const filePath = `${folderPath}/${fileName}`;
 
         const { error } = await supabase.storage
-          .from("applications")
+          .from("Applications")
           .upload(filePath, file);
 
         if (error) {
-          console.error(`Failed to upload ${key}:`, error);
+          const errorMsg = `Failed to upload ${key}: ${error.message}`;
+          console.error(errorMsg);
+          uploadErrors[key] = error.message;
         } else {
           uploadedFiles[key] = filePath;
           console.log(`Uploaded ${key} to ${filePath}`);
         }
       } catch (err) {
-        console.error(`Error uploading ${key}:`, err);
+        const errorMsg = `Error uploading ${key}: ${err instanceof Error ? err.message : String(err)}`;
+        console.error(errorMsg);
+        uploadErrors[key] = errorMsg;
       }
     }
 
+    // Upload generated PDFs
+    if (applicationPdfBuffer) {
+      try {
+        const pdfPath = `${folderPath}/application.pdf`;
+        console.log(`Attempting to upload application PDF (${applicationPdfBuffer.length} bytes) to ${pdfPath}`);
+
+        const uploadResult = await supabase.storage
+          .from("Applications")
+          .upload(pdfPath, applicationPdfBuffer, { contentType: "application/pdf" });
+
+        console.log("Upload result:", uploadResult);
+
+        if (uploadResult.error) {
+          console.error("Failed to upload application PDF:", uploadResult.error);
+        } else {
+          uploadedFiles["application_pdf"] = pdfPath;
+          console.log(`✓ Uploaded application PDF to ${pdfPath}`);
+        }
+      } catch (err) {
+        console.error("Exception uploading application PDF:", err instanceof Error ? err.message : String(err), err);
+      }
+    } else {
+      console.log("applicationPdfBuffer is null or undefined");
+    }
+
+    if (agreementPdfBuffer) {
+      try {
+        const pdfPath = `${folderPath}/agreement-signed.pdf`;
+        const { error } = await supabase.storage
+          .from("Applications")
+          .upload(pdfPath, new Uint8Array(agreementPdfBuffer), { contentType: "application/pdf" });
+
+        if (error) {
+          console.error("Failed to upload agreement PDF:", error.message);
+        } else {
+          uploadedFiles["agreement_pdf"] = pdfPath;
+          console.log(`Uploaded agreement PDF to ${pdfPath}`);
+        }
+      } catch (err) {
+        console.error("Error uploading agreement PDF:", err);
+      }
+    }
+
+    if (chargePdfBuffer) {
+      try {
+        const pdfPath = `${folderPath}/payment-confirmation.pdf`;
+        const { error } = await supabase.storage
+          .from("Applications")
+          .upload(pdfPath, new Uint8Array(chargePdfBuffer), { contentType: "application/pdf" });
+
+        if (error) {
+          console.error("Failed to upload charge confirmation PDF:", error.message);
+        } else {
+          uploadedFiles["charge_pdf"] = pdfPath;
+          console.log(`Uploaded charge confirmation PDF to ${pdfPath}`);
+        }
+      } catch (err) {
+        console.error("Error uploading charge confirmation PDF:", err);
+      }
+    }
+
+    if (Object.keys(uploadErrors).length > 0) {
+      console.error("Upload errors:", uploadErrors);
+    }
+
     // Save application record to database
+    // Build a secured copy with sensitive fields encrypted before persisting.
+    // The original `application` object (plaintext) is intentionally kept for
+    // Telegram notification masking and PDF generation above — encryption happens
+    // only on what goes into the database.
+    const securedApplication = {
+      ...application,
+      primary: {
+        ...application.primary,
+        ssn: encryptIfPresent(application.primary.ssn),
+        dob: encryptIfPresent(application.primary.dob),
+      },
+      ...(application.coApplicant && {
+        coApplicant: {
+          ...application.coApplicant,
+          ssn: encryptIfPresent(application.coApplicant.ssn),
+          dob: encryptIfPresent(application.coApplicant.dob),
+        },
+      }),
+      ...(application.business && {
+        business: {
+          ...application.business,
+          ein: encryptIfPresent(application.business.ein),
+        },
+      }),
+    };
+
     try {
       const { data, error } = await supabase
         .from("applications")
@@ -86,9 +325,10 @@ export async function POST(req: NextRequest) {
             customer_email: p.email,
             customer_phone: p.phone,
             application_mode: application.mode,
-            status: "submitted",
+            status: applicationStatus,
+            coapp_invite_token: coAppInviteToken,
             storage_folder_path: folderPath,
-            application_json: application,
+            application_json: securedApplication,
             primary_license_file_name: uploadedFiles["primary_license"] || null,
             co_applicant_license_file_name: uploadedFiles["coapp_license"] || null,
             insurance_file_name: uploadedFiles["insurance"] || null,
@@ -96,18 +336,33 @@ export async function POST(req: NextRequest) {
             utility_bill_file_name: uploadedFiles["utility_bill"] || null,
             driver_license_photo_file_name: uploadedFiles["driver_license_photo"] || null,
             business_license_file_name: uploadedFiles["business_license"] || null,
+            application_pdf_file_name: uploadedFiles["application_pdf"] || null,
+            agreement_pdf_file_name: uploadedFiles["agreement_pdf"] || null,
+            charge_confirmation_pdf_file_name: uploadedFiles["charge_pdf"] || null,
             submitted_at: new Date().toISOString(),
           },
         ])
         .select();
 
       if (error) {
-        console.error("Failed to save application to database:", error);
+        const errorMsg = `Database error: ${error.message || JSON.stringify(error)}`;
+        console.error("Failed to save application to database:", errorMsg);
+        throw new Error(errorMsg);
       } else {
         console.log("Application saved to database:", data);
+        // If we merged co-app data at submit time, link the invite row to the new application.
+        const newAppId = Array.isArray(data) && data[0]?.id ? data[0].id : null;
+        if (coAppInviteToken && newAppId && applicationStatus === "submitted") {
+          await supabase
+            .from("coapp_invites")
+            .update({ merged_into_application_id: newAppId })
+            .eq("token", coAppInviteToken);
+        }
       }
     } catch (err) {
-      console.error("Error saving to database:", err);
+      const errorMsg = `Error saving to database: ${err instanceof Error ? err.message : String(err)}`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
 
     // Send Telegram notification to Mor
@@ -117,11 +372,14 @@ export async function POST(req: NextRequest) {
       success: true,
       id: Date.now().toString(),
       storagePath: folderPath,
+      uploadErrors: Object.keys(uploadErrors).length > 0 ? uploadErrors : null,
+      filesUploaded: Object.keys(uploadedFiles).length,
     });
   } catch (err) {
-    console.error("Submit error:", err);
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("Submit error:", errorMsg);
     return NextResponse.json(
-      { error: "Failed to process application" },
+      { error: errorMsg },
       { status: 500 }
     );
   }
@@ -132,18 +390,19 @@ async function sendTelegramNotification(
   files: { field: string; name: string }[],
   storagePath: string
 ) {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
   if (!botToken || !chatId) return;
 
   const p = app.primary;
   const lines = [
-    `🚗 *New 1OF1 Application*`,
+    `🚗 NEW 1OF1 APPLICATION`,
     ``,
-    `*${p.firstName} ${p.middleName} ${p.lastName}*`,
+    `${p.firstName} ${p.middleName} ${p.lastName}`,
     `📧 ${p.email}`,
     `📱 ${p.phone}`,
     `🎂 ${p.dob}`,
+    `🔒 SSN: ${p.ssn ? `***-**-${p.ssn.replace(/\D/g, "").slice(-4)}` : "Not provided"}`,
     ``,
     `📍 License: ${p.licenseAddress || "—"}`,
     p.registeringAddressSame === false
@@ -159,17 +418,34 @@ async function sendTelegramNotification(
 
   if (app.mode === "co-applicant" && app.coApplicant) {
     const c = app.coApplicant;
-    lines.push(``, `*Co-Applicant: ${c.firstName} ${c.lastName}*`);
+    lines.push(``, `CO-APPLICANT: ${c.firstName} ${c.lastName}`);
     lines.push(`💼 ${c.occupation} at ${c.employerName}`);
     lines.push(`💰 $${c.annualIncome}/yr`);
   }
 
   if (app.mode === "business" && app.business) {
     const b = app.business;
-    lines.push(``, `*Business: ${b.legalName}*`);
+    lines.push(``, `BUSINESS: ${b.legalName}`);
+    lines.push(`📱 ${b.phone || "—"}`);
+    lines.push(`📍 ${[b.address, b.suite, b.city, b.state, b.zip].filter(Boolean).join(", ")}`);
     lines.push(`🏢 ${b.title} · ${b.ownershipPercent}% ownership`);
     lines.push(`📋 EIN: ${b.ein} · ${b.yearsInBusiness}yrs in business`);
     lines.push(`🏦 Bank: ${b.bankName}`);
+  }
+
+  // Missing fields check
+  const missing: string[] = [];
+  if (!p.ssn) missing.push("Primary SSN");
+  if (p.employerName && !p.employerStreet) missing.push("Primary employer address");
+  if (!p.employerName && !p.occupation) missing.push("Primary occupation / employer");
+  if (app.mode === "co-applicant" && app.coApplicant) {
+    const c = app.coApplicant;
+    if (!c.ssn) missing.push("Co-applicant SSN");
+    if (c.employerName && !c.employerStreet) missing.push("Co-applicant employer address");
+  }
+  if (missing.length > 0) {
+    lines.push(``, `⚠️ MISSING — follow up before lender submission:`);
+    missing.forEach((f) => lines.push(`  • ${f}`));
   }
 
   lines.push(``, `📎 Docs: ${files.length} files uploaded`);
@@ -179,16 +455,19 @@ async function sendTelegramNotification(
   lines.push(``, `📞 Contact: 1 OF 1 AUTO Representative · 954-770-1177`);
 
   try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
         text: lines.join("\n"),
-        parse_mode: "Markdown",
       }),
     });
-  } catch {
-    console.error("Telegram notification failed");
+    const result = await res.json();
+    if (!result.ok) {
+      console.error("Telegram notification failed:", result.description);
+    }
+  } catch (err) {
+    console.error("Telegram notification error:", err);
   }
 }

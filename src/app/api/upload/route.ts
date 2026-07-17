@@ -11,7 +11,27 @@ import { NextRequest, NextResponse } from "next/server";
  *
  * To enable OCR: add a standard API key (sk-ant-api03-...) to
  * ANTHROPIC_API_KEY in Vercel environment variables.
+ *
+ * Auth note: This route is intentionally unauthenticated. The upload step
+ * occurs before the customer has an account or session (pre-login flow).
+ * Do not add auth middleware here without rethinking the full upload UX.
  */
+
+const ALLOWED_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/heic",
+  "image/heif",
+  "image/webp",
+]);
+
+const ALLOWED_EXTENSIONS = new Set([
+  "pdf", "jpeg", "jpg", "png", "heic", "heif", "webp",
+]);
+
+const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15 MB
 
 type Extracted = {
   firstName: string;
@@ -20,6 +40,10 @@ type Extracted = {
   dob: string;
   licenseNumber: string;
   address: string;
+  licenseStreet: string;
+  licenseCity: string;
+  licenseState: string;
+  licenseZip: string;
 };
 
 const EMPTY: Extracted = {
@@ -29,6 +53,10 @@ const EMPTY: Extracted = {
   dob: "",
   licenseNumber: "",
   address: "",
+  licenseStreet: "",
+  licenseCity: "",
+  licenseState: "",
+  licenseZip: "",
 };
 
 export async function POST(req: NextRequest) {
@@ -38,6 +66,18 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    // File size validation
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return NextResponse.json({ error: "File too large (max 15MB)" }, { status: 400 });
+    }
+
+    // File type validation — check both MIME type and extension
+    const mimeType = file.type?.toLowerCase() || "";
+    const ext = file.name?.split(".").pop()?.toLowerCase() || "";
+    if (!ALLOWED_MIME_TYPES.has(mimeType) || !ALLOWED_EXTENSIONS.has(ext)) {
+      return NextResponse.json({ error: "File type not allowed" }, { status: 400 });
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -80,7 +120,7 @@ export async function POST(req: NextRequest) {
               },
               {
                 type: "text",
-                text: `Extract data from this US driver's license. Return ONLY JSON: {"firstName":"","middleName":"","lastName":"","dob":"YYYY-MM-DD","licenseNumber":"","address":"full address"}. If unclear, use empty string.`,
+                text: `Extract data from this US driver's license. Return ONLY valid JSON with these exact keys: {"firstName":"","middleName":"","lastName":"","dob":"YYYY-MM-DD","licenseNumber":"","address":"full address string","licenseStreet":"street line only e.g. 121 NE 3rd St Apt 1605","licenseCity":"city name","licenseState":"2-letter state code","licenseZip":"5 digit zip"}. Use empty string for any field you cannot read clearly.`,
               },
             ],
           },
@@ -117,6 +157,10 @@ export async function POST(req: NextRequest) {
         dob: /^\d{4}-\d{2}-\d{2}$/.test(parsed.dob) ? parsed.dob : "",
         licenseNumber: parsed.licenseNumber || "",
         address: parsed.address || "",
+        licenseStreet: parsed.licenseStreet || "",
+        licenseCity: parsed.licenseCity || "",
+        licenseState: parsed.licenseState || "",
+        licenseZip: parsed.licenseZip || "",
       },
     });
   } catch {

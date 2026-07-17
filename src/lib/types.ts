@@ -2,6 +2,14 @@
 
 export type HousingStatus = "own" | "mortgage" | "rent" | "family" | "other";
 export type ApplicationMode = "individual" | "co-applicant" | "business";
+export type CoAppRelationship = "spouse" | "relative" | "partner" | "other";
+
+export type CoAppInviteState = {
+  token: string;          // unique invite token returned by /api/coapp/invite
+  link: string;           // full URL the SMS/QR points to
+  phone: string;          // digits-only phone the link was sent to
+  relationship: CoAppRelationship | "";
+};
 
 export type PersonData = {
   // From DL OCR
@@ -13,7 +21,11 @@ export type PersonData = {
   lastName: string;
   dob: string; // YYYY-MM-DD
   licenseNumber: string;
-  licenseAddress: string; // full address as on DL
+  licenseAddress: string; // full address as on DL (raw / display)
+  licenseStreet: string;
+  licenseCity: string;
+  licenseState: string;
+  licenseZip: string;
   // From CRM (pre-filled)
   email: string;
   phone: string;
@@ -104,6 +116,18 @@ export type ApplicationRecord = {
   notes: string | null;
 };
 
+// Paths to files already uploaded to Supabase before the Stripe redirect.
+// Strings survive JSON serialization; File objects do not.
+export type StagedFiles = {
+  primaryLicense?: string | null;
+  coAppLicense?: string | null;
+  insurance?: string | null;
+  registration?: string | null;
+  driverLicensePhoto?: string | null;
+  utilityBill?: string | null;
+  businessLicense?: string | null;
+};
+
 export type ApplicationData = {
   mode: ApplicationMode;
   primary: PersonData;
@@ -113,6 +137,11 @@ export type ApplicationData = {
   agreement: AgreementData;
   depositPaid: boolean;
   stripeSessionId: string;
+  // Present when mode === "co-applicant" and the primary has dispatched the remote invite.
+  // The co-applicant submits their portion via /apply/coapp/[token]; /api/submit reads
+  // this token and merges any already-submitted co-app data at primary submit time.
+  coAppInvite?: CoAppInviteState;
+  _staged?: StagedFiles;
 };
 
 export const emptyPerson = (): PersonData => ({
@@ -125,6 +154,10 @@ export const emptyPerson = (): PersonData => ({
   dob: "",
   licenseNumber: "",
   licenseAddress: "",
+  licenseStreet: "",
+  licenseCity: "",
+  licenseState: "",
+  licenseZip: "",
   email: "",
   phone: "",
   ssn: "",

@@ -5,7 +5,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence } from "motion/react";
 
-export default function HomeIntro() {
+type Props = {
+  onComplete?: () => void;
+};
+
+export default function HomeIntro({ onComplete }: Props = {}) {
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
@@ -13,10 +17,16 @@ export default function HomeIntro() {
       setTimeout(() => setPhase(1), 200),   // glow bloom
       setTimeout(() => setPhase(2), 500),   // logo rises
       setTimeout(() => setPhase(3), 1400),  // sweep
-      setTimeout(() => setPhase(4), 2600),  // CTA
+      setTimeout(() => setPhase(4), 2600),  // CTA (or onComplete if provided)
     ];
     return () => timers.forEach(clearTimeout);
   }, []);
+
+  // When used as an apply-page intro, call onComplete instead of showing CTA
+  useEffect(() => {
+    if (!onComplete || phase < 4) return;
+    onComplete();
+  }, [phase, onComplete]);
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen px-6 py-12 relative overflow-hidden">
@@ -76,9 +86,9 @@ export default function HomeIntro() {
         </AnimatePresence>
       </motion.div>
 
-      {/* CTA */}
+      {/* CTA — only shown on home page, not when used as apply intro */}
       <AnimatePresence>
-        {phase >= 4 && (
+        {phase >= 4 && !onComplete && (
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
