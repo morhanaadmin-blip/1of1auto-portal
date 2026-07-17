@@ -27,6 +27,7 @@ interface Application {
   missingFields: string[];
   firstName: string;
   lastName: string;
+  hasCoApplicant: boolean;
   ssn: string | null;
   dob: string | null;
   address: string | null;
@@ -49,7 +50,15 @@ const FILE_LABELS: { key: keyof AppFiles; label: string; icon: string; isPdf?: b
   { key: "businessLicense", label: "Business License", icon: "🏢" },
 ];
 
-const EDITABLE_FIELDS = [
+// Keep in sync with the server-side allowlist in api/admin/regenerate-pdf/route.ts,
+// which is what actually enforces this.
+const EDITABLE_FIELDS: {
+  field: string;
+  label: string;
+  placeholder: string;
+  sensitive?: boolean;
+}[] = [
+  { field: "ssn", label: "SSN", placeholder: "9 digits — blank keeps current", sensitive: true },
   { field: "licenseAddress", label: "Home Address (DL)", placeholder: "e.g. 17811 SW 58th St" },
   { field: "licenseCity", label: "City (DL)", placeholder: "e.g. Miami" },
   { field: "licenseState", label: "State (DL)", placeholder: "e.g. FL" },
@@ -281,6 +290,9 @@ export default function AdminPage() {
                       {app.dob && (
                         <div className="text-zinc-400">🎂 DOB: {app.dob}</div>
                       )}
+                      <div className={app.ssn ? "text-zinc-400" : "text-yellow-400"}>
+                        🔒 SSN: {app.ssn ?? "not on file"}
+                      </div>
                     </div>
 
                     {/* Missing fields warning */}
@@ -312,11 +324,13 @@ export default function AdminPage() {
                               Primary — {app.firstName} {app.lastName}
                             </div>
                             <div className="grid grid-cols-1 gap-2">
-                              {EDITABLE_FIELDS.map(({ field, label, placeholder }) => (
+                              {EDITABLE_FIELDS.map(({ field, label, placeholder, sensitive }) => (
                                 <div key={field} className="flex flex-col gap-1">
                                   <label className="text-xs text-zinc-500">{label}</label>
                                   <input
                                     type="text"
+                                    inputMode={sensitive ? "numeric" : undefined}
+                                    autoComplete={sensitive ? "off" : undefined}
                                     value={patches[app.id]?.[field] ?? ""}
                                     onChange={(e) => setPatch(app.id, field, e.target.value)}
                                     placeholder={placeholder || `Override ${label}`}
@@ -328,25 +342,29 @@ export default function AdminPage() {
                           </div>
 
                           {/* Co-Applicant */}
-                          <div>
-                            <div className="text-xs text-zinc-400 uppercase tracking-wide font-semibold mb-2">
-                              Co-Applicant
+                          {app.hasCoApplicant && (
+                            <div>
+                              <div className="text-xs text-zinc-400 uppercase tracking-wide font-semibold mb-2">
+                                Co-Applicant
+                              </div>
+                              <div className="grid grid-cols-1 gap-2">
+                                {EDITABLE_FIELDS.map(({ field, label, placeholder, sensitive }) => (
+                                  <div key={field} className="flex flex-col gap-1">
+                                    <label className="text-xs text-zinc-500">{label}</label>
+                                    <input
+                                      type="text"
+                                      inputMode={sensitive ? "numeric" : undefined}
+                                      autoComplete={sensitive ? "off" : undefined}
+                                      value={coPatches[app.id]?.[field] ?? ""}
+                                      onChange={(e) => setCoPatch(app.id, field, e.target.value)}
+                                      placeholder={placeholder || `Override ${label}`}
+                                      className="bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-yellow-500"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <div className="grid grid-cols-1 gap-2">
-                              {EDITABLE_FIELDS.map(({ field, label, placeholder }) => (
-                                <div key={field} className="flex flex-col gap-1">
-                                  <label className="text-xs text-zinc-500">{label}</label>
-                                  <input
-                                    type="text"
-                                    value={coPatches[app.id]?.[field] ?? ""}
-                                    onChange={(e) => setCoPatch(app.id, field, e.target.value)}
-                                    placeholder={placeholder || `Override ${label}`}
-                                    className="bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-yellow-500"
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          </div>
+                          )}
 
                           <p className="text-zinc-600 text-xs">Leave blank to keep original values. Changes save when you regenerate the PDF.</p>
                         </div>

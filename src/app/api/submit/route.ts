@@ -7,6 +7,7 @@ import {
 } from "@/lib/pdf-generator";
 import type { ApplicationData, PersonData } from "@/lib/types";
 import { encryptIfPresent } from "@/lib/crypto";
+import { sanitizeSSN } from "@/lib/ssn";
 
 // Initialize Supabase client with service role key
 const supabase = createClient(
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
     application.primary = {
       ...application.primary,
       phone: sanitizePhoneNumber(application.primary.phone),
+      ssn: sanitizeSSN(application.primary.ssn || ""),
     };
 
     // Apply sanitization to co-applicant if present
@@ -39,6 +41,7 @@ export async function POST(req: NextRequest) {
       application.coApplicant = {
         ...application.coApplicant,
         phone: sanitizePhoneNumber(application.coApplicant.phone),
+        ssn: sanitizeSSN(application.coApplicant.ssn || ""),
       };
     }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { generateApplicationPDF } from "@/lib/pdf-generator";
 import { decrypt } from "@/lib/crypto";
+import { preparePatch } from "@/lib/admin-patch";
 import type { ApplicationData } from "@/lib/types";
 
 function decryptIfEncrypted(value: string | undefined | null): string {
@@ -33,6 +34,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing application id" }, { status: 400 });
   }
 
+  // Validate, normalize and encrypt the patches before touching the database, so
+  // a bad SSN costs a round-trip and never reaches application_json.
+  const primaryPatch = preparePatch(patches, "Primary");
+  if (!primaryPatch.ok) {
+    return NextResponse.json({ error: primaryPatch.error }, { status: 400 });
+  }
+  const coPatch = preparePatch(coPatches, "Co-applicant");
+  if (!coPatch.ok) {
+    return NextResponse.json({ error: coPatch.error }, { status: 400 });
+  }
+
   // Fetch the application row
   const { data: row, error: fetchError } = await supabase
     .from("applications")
@@ -56,17 +68,31 @@ export async function POST(req: NextRequest) {
     : row.application_json;
 
   // Apply admin patches
-  if (patches && Object.keys(patches).length > 0) {
-    application.primary = { ...application.primary, ...patches } as typeof application.primary;
+  if (Object.keys(coPatch.patch).length > 0 && !application.coApplicant) {
+    // Better to say so than to accept the edit and drop it on the floor.
+    return NextResponse.json(
+      { error: "This application has no co-applicant to edit." },
+      { status: 400 }
+    );
   }
-  if (coPatches && Object.keys(coPatches).length > 0 && application.coApplicant) {
-    application.coApplicant = { ...application.coApplicant, ...coPatches } as typeof application.coApplicant;
+
+  if (Object.keys(primaryPatch.patch).length > 0) {
+    application.primary = { ...application.primary, ...primaryPatch.patch } as typeof application.primary;
   }
-  if ((patches && Object.keys(patches).length > 0) || (coPatches && Object.keys(coPatches).length > 0)) {
-    await supabase
+  if (Object.keys(coPatch.patch).length > 0 && application.coApplicant) {
+    application.coApplicant = { ...application.coApplicant, ...coPatch.patch } as typeof application.coApplicant;
+  }
+  if (Object.keys(primaryPatch.patch).length > 0 || Object.keys(coPatch.patch).length > 0) {
+    const { error: updateError } = await supabase
       .from("applications")
       .update({ application_json: application })
       .eq("id", id);
+    if (updateError) {
+      return NextResponse.json(
+        { error: `Saving changes failed: ${updateError.message}` },
+        { status: 500 }
+      );
+    }
   }
 
   // Reconstruct _staged from stored DB file paths so document status shows correctly
