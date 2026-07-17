@@ -90,7 +90,8 @@ export async function GET(req: NextRequest) {
         // Applicant details from JSON
         firstName: primary.firstName || "",
         lastName: primary.lastName || "",
-        ssn: primary.ssn ? `***-**-${primary.ssn.slice(-4)}` : null,
+        hasCoApplicant: !!app?.coApplicant,
+        ssn: primary.ssn ? `***-**-${String(primary.ssn).replace(/\D/g, "").slice(-4)}` : null,
         dob: primary.dob || null,
         address: primary.address || null,
         city: primary.city || null,
